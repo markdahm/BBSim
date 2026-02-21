@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>◆ Diamond League</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>◆ Diamond</h1>
+    <span>League Manager</span>
+  </div>
+  <div class="nav-section">League</div>
+  <div class="nav-item active" onclick="nav('home')" id="nav-home"><span class="nav-icon">🏆</span> League Home</div>
+  <div class="nav-item" onclick="nav('teams')" id="nav-teams"><span class="nav-icon">⚾</span> Teams</div>
+  <div class="nav-item" onclick="nav('players')" id="nav-players"><span class="nav-icon">👤</span> Players</div>
+  <div class="nav-section">Game</div>
+  <div class="nav-item" onclick="nav('simulate')" id="nav-simulate"><span class="nav-icon">▶</span> Simulate Game</div>
+  <div class="league-picker">
+    <div class="league-label">Season</div>
+    <div class="league-name" id="season-display">2025</div>
+    <div class="save-indicator" id="save-ind">● Auto-saved to browser</div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEAGUE HOME PAGE -->
+  <div class="page active" id="page-home">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="league-title">Diamond League</div>
+        <div class="topbar-sub" id="league-sub">2025 Season · 30 Teams</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn sm" onclick="editLeagueName()">Edit Name</button>
+        <button class="btn sm primary" onclick="advanceSeason()">Advance Season →</button>
+      </div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div class="league-grid" id="league-stat-cards"></div>
+      <div class="section-title">Standings</div>
+      <div id="standings-container"></div>
+    </div>
+  </div>
+
+  <!-- TEAMS PAGE -->
+  <div class="page" id="page-teams">
+    <div class="topbar">
+      <div><div class="topbar-title">Teams</div><div class="topbar-sub" id="teams-sub">All 30 Franchises</div></div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div id="teams-container"></div>
+    </div>
+  </div>
+
+  <!-- TEAM DETAIL (not a full page, rendered inside teams) -->
+  <div class="page" id="page-team-detail">
+    <div class="topbar">
+      <div><div class="topbar-title" id="td-title">Team</div><div class="topbar-sub" id="td-sub">Roster</div></div>
+      <div class="topbar-actions">
+        <button class="btn sm" onclick="editTeamName()">Edit Name</button>
+      </div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div class="breadcrumb" onclick="nav('teams')"><span>← Teams</span></div>
+      <div id="team-detail-container"></div>
+    </div>
+  </div>
+
+  <!-- PLAYERS PAGE -->
+  <div class="page" id="page-players">
+    <div class="topbar">
+      <div><div class="topbar-title">Players</div><div class="topbar-sub">League-wide stats & cards</div></div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div class="search-bar">
+        <input class="search-input" id="player-search" placeholder="Search player name..." oninput="renderPlayersTable()">
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="setFilter('ALL',this)">All</button>
+          <button class="filter-tab" onclick="setFilter('BAT',this)">Batters</button>
+          <button class="filter-tab" onclick="setFilter('PIT',this)">Pitchers</button>
+        </div>
+      </div>
+      <table class="players-table" id="players-table">
+        <thead><tr id="players-thead"></tr></thead>
+        <tbody id="players-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SIMULATE PAGE -->
+  <div class="page" id="page-simulate">
+    <div class="topbar">
+      <div><div class="topbar-title">Simulate Game</div><div class="topbar-sub">Stats update after each game</div></div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div id="sim-container"></div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- BASEBALL CARD OVERLAY -->
+<div class="card-overlay" id="card-overlay" onclick="closeCard(event)">
+  <div class="card-wrap">
+    <div class="card-close" onclick="closeCardDirect()">✕</div>
+    <div class="baseball-card" id="baseball-card"></div>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

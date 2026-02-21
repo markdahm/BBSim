@@ -1,0 +1,22 @@
+{
+  "name": "bbsim",
+  "version": "1.0.0",
+  "description": "Diamond League - Baseball Simulation Manager",
+  "main": "index.html",
+  "scripts": {
+    "dev": "browser-sync start --server --files '*.html, *.css, *.js, src/*.js' --no-notify",
+    "start": "browser-sync start --server --files '*.html, *.css, *.js, src/*.js' --no-notify",
+    "serve": "python3 -m http.server 8000"
+  },
+  "keywords": [
+    "baseball",
+    "simulation",
+    "game",
+    "sports"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "browser-sync": "^3.0.2"
+  }
+}
