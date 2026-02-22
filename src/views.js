@@ -1,4 +1,3 @@
-import { MLB_STRUCTURE } from './data.js';
 import { battingAvg, obpCalc, slgCalc } from './utils.js';
 import { LEAGUE, saveLeague, allBatters, allPitchers } from './league.js';
 import { renderSimulate } from './game.js';
@@ -11,6 +10,7 @@ let currentPlayer = null;
 let playerFilter = 'ALL';
 let sortCol = 'avg';
 let sortDir = -1;
+let tdDragSrc = null;
 
 // ====================================================================
 // NAVIGATION
@@ -51,12 +51,32 @@ export function renderHome() {
     <div class="stat-card"><div class="sc-val">${topK   ? topK.career.k               : '—'}</div><div class="sc-lbl">K Leader · ${topK   ? topK.name   : '—'}</div></div>
   `;
 
-  // Standings by division
+  // Standings by division — grouped dynamically from LEAGUE.teams
   const cont = document.getElementById('standings-container');
+  const divMap = new Map(); // divName → { league, teams[] }
+  for (const t of LEAGUE.teams) {
+    const key = t.division || '—';
+    if (!divMap.has(key)) divMap.set(key, { league: t.league || '', teams: [] });
+    divMap.get(key).teams.push(t);
+  }
+  // Group divisions by league to preserve AL/NL ordering
+  const leagueOrder = ['American League', 'National League'];
+  const leagueDivs = new Map();
+  for (const [divName, { league }] of divMap) {
+    if (!leagueDivs.has(league)) leagueDivs.set(league, []);
+    leagueDivs.get(league).push(divName);
+  }
+  // Sort leagues by preferred order, then alphabetically
+  const sortedLeagues = [...leagueDivs.keys()].sort((a, b) => {
+    const ai = leagueOrder.indexOf(a), bi = leagueOrder.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1; if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
   let html = '<div class="division-grid">';
-  for (const [, divisions] of Object.entries(MLB_STRUCTURE)) {
-    for (const [divName] of Object.entries(divisions)) {
-      const divTeams = LEAGUE.teams.filter(t => t.division === divName).sort((a,b) => (b.w - b.l) - (a.w - a.l));
+  for (const leagueName of sortedLeagues) {
+    for (const divName of leagueDivs.get(leagueName).sort()) {
+      const divTeams = divMap.get(divName).teams.sort((a,b) => (b.w - b.l) - (a.w - a.l));
       const leader = divTeams[0];
       html += `<div class="division-card">
         <div class="division-head">${divName}</div>
@@ -79,12 +99,30 @@ export function renderHome() {
 // TEAMS
 // ====================================================================
 export function renderTeams() {
+  // Group teams dynamically by league then division
+  const leagueOrder = ['American League', 'National League'];
+  const leagueMap = new Map();
+  for (const t of LEAGUE.teams) {
+    const lg = t.league || '—';
+    const dv = t.division || '—';
+    if (!leagueMap.has(lg)) leagueMap.set(lg, new Map());
+    const divMap = leagueMap.get(lg);
+    if (!divMap.has(dv)) divMap.set(dv, []);
+    divMap.get(dv).push(t);
+  }
+  const sortedLeagues = [...leagueMap.keys()].sort((a, b) => {
+    const ai = leagueOrder.indexOf(a), bi = leagueOrder.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1; if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
   let html = '';
-  for (const [leagueName, divisions] of Object.entries(MLB_STRUCTURE)) {
+  for (const leagueName of sortedLeagues) {
     html += `<div class="section-title" style="margin-top:${html ? '28px' : '0'}">${leagueName}</div>`;
     html += '<div class="teams-grid">';
-    for (const [divName] of Object.entries(divisions)) {
-      LEAGUE.teams.filter(t => t.division === divName).forEach(t => {
+    const divMap = leagueMap.get(leagueName);
+    for (const divName of [...divMap.keys()].sort()) {
+      divMap.get(divName).forEach(t => {
         const pct = (t.w + t.l) === 0 ? '—' : (t.w / (t.w + t.l)).toFixed(3);
         html += `<div class="team-card" onclick="openTeam(${t.id})">
           <div class="tc-color" style="background:${t.color}"></div>
@@ -116,26 +154,9 @@ export function renderTeamDetail() {
     ${t.league} · ${t.division} · Season ${LEAGUE.season}
   </div>`;
 
-  // Batters
-  html += `<div class="section-title" style="margin-bottom:10px">Batting Roster</div>
-  <table class="roster-table" style="margin-bottom:24px">
-    <thead><tr><th>#</th><th>Name</th><th>Pos</th><th>AVG</th><th>HR</th><th>RBI</th><th>R</th><th>H</th><th>BB</th><th>K</th><th>SB</th><th>OPS*</th></tr></thead>
-    <tbody>`;
-  t.batters.forEach(b => {
-    const avg = battingAvg(b).toFixed(3);
-    const obp = obpCalc(b).toFixed(3);
-    const slg = slgCalc(b).toFixed(3);
-    const ops = (parseFloat(obp) + parseFloat(slg)).toFixed(3);
-    html += `<tr class="roster-row" onclick="openCard('${t.id}','${b.id}')">
-      <td><span class="pos-badge">${b.num}</span></td>
-      <td><b>${b.name}</b></td>
-      <td><span class="pos-badge">${b.pos}</span></td>
-      <td>${avg}</td><td>${b.career.hr}</td><td>${b.career.rbi}</td><td>${b.career.r}</td>
-      <td>${b.career.h}</td><td>${b.career.bb}</td><td>${b.career.k}</td><td>${b.career.sb}</td>
-      <td>${ops}</td>
-    </tr>`;
-  });
-  html += '</tbody></table>';
+  // Lineup editor placeholder (populated by renderLineupEditor after innerHTML is set)
+  html += `<div class="section-title" style="margin-bottom:10px">Batting Lineup <span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;font-weight:400">drag to reorder · click to view card</span></div>
+  <div class="lu-list" id="td-lineup-list" style="margin-bottom:28px"></div>`;
 
   // Pitchers
   html += `<div class="section-title" style="margin-bottom:10px">Pitching Staff</div>
@@ -156,6 +177,68 @@ export function renderTeamDetail() {
   });
   html += '</tbody></table>';
   document.getElementById('team-detail-container').innerHTML = html;
+  renderLineupEditor(t);
+}
+
+function renderLineupEditor(t) {
+  const container = document.getElementById('td-lineup-list');
+  if (!container) return;
+  container.innerHTML = '';
+  let dragging = false;
+
+  const mkDivider = label => {
+    const d = document.createElement('div');
+    d.style.cssText = 'font-family:"IBM Plex Mono",monospace;font-size:0.58rem;color:var(--muted);padding:8px 2px 3px;text-transform:uppercase;letter-spacing:0.06em;border-top:1px solid var(--line);margin-top:4px;';
+    d.textContent = label;
+    return d;
+  };
+
+  const mkRow = (b, idx) => {
+    const isLineup = idx < 9;
+    const avg = battingAvg(b).toFixed(3);
+    const row = document.createElement('div');
+    row.className = 'lu-row';
+    if (!isLineup) row.style.opacity = '0.55';
+    row.draggable = true;
+    row.innerHTML = `
+      <span class="lu-num">${isLineup ? idx + 1 : '·'}</span>
+      <div class="lu-nw">
+        <div class="lu-pn">${b.name} <span class="lu-pos">${b.pos}</span> <span class="arch-badge">${b.arch}</span></div>
+        <div class="lu-ps">#${b.num} · AVG ${avg} · HR ${b.career.hr} · RBI ${b.career.rbi}</div>
+      </div>
+      <span style="color:#ccc;font-size:0.8rem">⠿</span>`;
+
+    row.addEventListener('dragstart', e => {
+      tdDragSrc = idx; dragging = true;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => { row.classList.remove('dragging'); setTimeout(() => { dragging = false; }, 0); });
+    row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+    row.addEventListener('drop', e => {
+      e.preventDefault(); row.classList.remove('drag-over');
+      if (tdDragSrc !== null && tdDragSrc !== idx) {
+        const [mv] = t.batters.splice(tdDragSrc, 1);
+        t.batters.splice(idx, 0, mv);
+        saveLeague();
+        renderLineupEditor(t);
+      }
+    });
+    row.addEventListener('click', () => { if (!dragging) openCard(t.id, b.id); });
+    return row;
+  };
+
+  const lineup = t.batters.slice(0, 9);
+  const bench  = t.batters.slice(9);
+
+  container.appendChild(mkDivider(`Starters — ${lineup.length}`));
+  lineup.forEach((b, i) => container.appendChild(mkRow(b, i)));
+
+  if (bench.length > 0) {
+    container.appendChild(mkDivider(`Bench — ${bench.length}`));
+    bench.forEach((b, i) => container.appendChild(mkRow(b, 9 + i)));
+  }
 }
 
 export function editTeamName() {

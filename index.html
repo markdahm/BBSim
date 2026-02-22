@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>◆ Diamond League</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&family=Oswald:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -40,6 +40,9 @@
       </div>
       <div class="topbar-actions">
         <button class="btn sm" onclick="editLeagueName()">Edit Name</button>
+        <label class="btn sm" style="cursor:pointer">Import Rosters
+          <input type="file" accept=".txt,.csv,.tsv" onchange="importRosters(this)" style="display:none">
+        </label>
         <button class="btn sm primary" onclick="advanceSeason()">Advance Season →</button>
       </div>
     </div>

@@ -2,7 +2,7 @@
 // BBSim - Diamond League Baseball Simulator
 // Entry point: imports modules, exposes window globals, boots app.
 // ====================================================================
-import { initLeague } from './src/league.js';
+import { initLeague, importRosters } from './src/league.js';
 import {
   nav, editLeagueName, saveLeagueName, cancelLeagueName, advanceSeason,
   openTeam, editTeamName, saveTeamName, cancelTeamName,
@@ -21,6 +21,8 @@ Object.assign(window, {
   openCard, openCardById, closeCard, closeCardDirect,
   updatePlayerName,
   setFilter, doSort, renderPlayersTable,
+  // Roster import
+  importRosters,
   // Game engine
   startGame, gSinglePitch, gPitch, gAuto, gAutoGame, gShowLineup, resolveDec, newMatchup, gToggleSettings, gSetDelay,
 });
