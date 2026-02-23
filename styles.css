@@ -81,6 +81,8 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 }
 .dropdown-item:last-child { border-bottom:none; }
 .dropdown-item:hover { background:var(--ink); color:var(--chalk); }
+.dropdown-item.danger { color:var(--accent); }
+.dropdown-item.danger:hover { background:var(--accent); color:#fff; }
 
 /* ── LEAGUE HOME ── */
 .league-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; margin-bottom:28px; }

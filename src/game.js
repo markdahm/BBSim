@@ -227,8 +227,7 @@ function renderGameUI() {
       <button class="btn primary" id="g-btn-pitch" onclick="gPitch()">Pitch to Batter</button>
       <button class="btn" id="g-btn-auto" onclick="gAuto()">Auto-Play Inning</button>
       <button class="btn" id="g-btn-game" onclick="gAutoGame()">Auto-Play Game</button>
-      <button class="btn" onclick="newMatchup()">New Matchup</button>
-      ${simMode === 'schedule' ? `<button class="btn" onclick="gNextGame()">Next Game →</button>` : ''}
+      <button class="btn" onclick="gNextGame()">Next Game →</button>
       <button class="btn controls-settings" onclick="gToggleSettings()">⚙ Settings</button>
     </div>
     <div id="g-settings-panel" class="settings-panel" style="display:none">
