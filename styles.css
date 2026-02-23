@@ -100,15 +100,15 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .standings-table td:not(:first-child) { text-align:center; font-family:'IBM Plex Mono',monospace; font-size:0.78rem; }
 .standings-table tr:last-child td { border-bottom:none; }
 .standings-table tr:hover td { background:#fafafa; cursor:pointer; }
-.team-cell { font-weight:500; }
+.team-cell { font-weight:500; display:flex; align-items:center; gap:6px; }
 .gb-cell { color:var(--muted); }
 
 /* ── TEAM LOGO ── */
-.team-logo-section { display:flex; align-items:center; gap:20px; margin-bottom:24px; padding:16px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
+.team-logo-section { display:flex; flex-direction:column; align-items:flex-start; margin-bottom:24px; padding:16px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
 .team-logo-box { width:80px; height:80px; border:2px solid var(--line); border-radius:4px; display:flex; align-items:center; justify-content:center; background:#fafafa; overflow:hidden; flex-shrink:0; }
 .team-logo-img { width:100%; height:100%; object-fit:contain; }
 .team-logo-emoji { font-size:2.8rem; line-height:1; }
-.team-logo-actions { display:flex; flex-direction:column; gap:8px; }
+.logo-text-link { font-family:'IBM Plex Mono',monospace; font-size:0.65rem; color:var(--accent); cursor:pointer; text-decoration:underline; }
 
 /* ── TEAMS VIEW ── */
 .teams-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; }
@@ -213,6 +213,10 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .cs-box { background:var(--chalk); border-radius:3px; padding:10px 8px; text-align:center; }
 .cs-val { font-family:'Playfair Display',serif; font-size:1.3rem; font-weight:700; }
 .cs-lbl { font-family:'IBM Plex Mono',monospace; font-size:0.55rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-top:1px; }
+.proj-stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+.pcs-box { background:#e8e8e8; border-radius:3px; padding:5px 4px; text-align:center; }
+.pcs-val { font-family:'IBM Plex Mono',monospace; font-size:0.75rem; font-weight:600; }
+.pcs-lbl { font-family:'IBM Plex Mono',monospace; font-size:0.48rem; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-top:1px; }
 
 /* Season-by-season log */
 .season-log { }
@@ -231,6 +235,8 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .rating-bar-bg { flex:1; height:5px; background:#eee; border-radius:3px; }
 .rating-bar-fill { height:100%; border-radius:3px; background:var(--ink); transition:width 0.4s; }
 .rating-val { font-family:'IBM Plex Mono',monospace; font-size:0.6rem; font-weight:600; width:28px; text-align:right; }
+.rating-input { font-family:'IBM Plex Mono',monospace; font-size:0.6rem; font-weight:600; width:34px; text-align:right; border:none; border-bottom:1px solid var(--line); background:transparent; color:var(--ink); padding:0 2px; outline:none; }
+.rating-input:focus { border-bottom-color:var(--accent); }
 
 /* Edit panel inside card */
 .edit-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
@@ -509,6 +515,10 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .sched-saved-empty { padding:14px 16px; font-family:'IBM Plex Mono',monospace; font-size:0.7rem; color:var(--muted); }
 .active-btn { background:var(--ink); color:var(--chalk); }
 
+.sched-columns { display:flex; gap:0; align-items:flex-start; }
+.sched-col-left  { flex:1; min-width:0; }
+.sched-col-right { flex:1; min-width:0; }
+.sched-col-divider { width:2px; background:var(--accent); align-self:stretch; margin:0 24px; flex-shrink:0; }
 .sched-list { display:flex; flex-direction:column; gap:4px; }
 .sched-row {
   display:flex; align-items:center; gap:12px;
@@ -531,6 +541,11 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .sched-more {
   padding:8px 14px; font-family:'IBM Plex Mono',monospace;
   font-size:0.65rem; color:var(--muted);
+}
+.sched-team-filter {
+  font-family:'IBM Plex Mono',monospace; font-size:0.72rem;
+  padding:4px 8px; border:1px solid var(--line); border-radius:3px;
+  background:var(--panel); color:var(--ink); cursor:pointer;
 }
 .sched-preview {
   width:100%; height:280px; resize:vertical;

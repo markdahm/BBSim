@@ -1,5 +1,6 @@
-import { battingAvg, obpCalc, slgCalc, teamLogoHtml } from './utils.js';
+import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl } from './utils.js';
 import { LEAGUE, saveLeague, allBatters, allPitchers } from './league.js';
+import { MLB } from './data.js';
 import { renderSimulate } from './game.js';
 
 // ====================================================================
@@ -8,11 +9,14 @@ import { renderSimulate } from './game.js';
 let currentTeamId = null;
 let currentPlayer = null;
 let playerFilter = 'ALL';
+let playerTeamFilter = '';
 let sortCol = 'avg';
 let sortDir = -1;
 let tdDragSrc = null;
+let tdPitchDragSrc = null;
 let schedBuildMode = false;
 let schedShowLoad = false;
+let schedTeamFilter = '';
 let schedMode = 'intra';          // 'intra' | 'outside'
 let schedIntraCounts = new Map(); // divName → intra-series count
 let schedCrossCounts = new Map(); // 'divA::divB' (sorted) → cross-series count
@@ -21,7 +25,7 @@ let schedOutsideFirst = null;     // first-selected div in outside mode
 // ====================================================================
 // NAVIGATION
 // ====================================================================
-const PAGES = ['home','teams','team-detail','players','simulate','schedule'];
+const PAGES = ['home','team-detail','players','simulate','schedule'];
 export function nav(page) {
   PAGES.forEach(p => {
     document.getElementById(`page-${p}`).classList.remove('active');
@@ -32,7 +36,6 @@ export function nav(page) {
   const navEl = document.getElementById(`nav-${page}`);
   if (navEl) navEl.classList.add('active');
   if (page === 'home') renderHome();
-  if (page === 'teams') renderTeams();
   if (page === 'players') renderPlayersTable();
   if (page === 'simulate') renderSimulate();
   if (page === 'schedule') renderSchedule();
@@ -87,13 +90,18 @@ export function renderHome() {
   const mkDivCard = divName => {
     const entry = divMap.get(divName);
     if (!entry) return '';
-    const divTeams = entry.teams.slice().sort((a, b) => (b.w - b.l) - (a.w - a.l));
+    const divTeams = entry.teams.slice().sort((a, b) => {
+      const pctA = (a.w + a.l) === 0 ? 0 : a.w / (a.w + a.l);
+      const pctB = (b.w + b.l) === 0 ? 0 : b.w / (b.w + b.l);
+      if (pctB !== pctA) return pctB - pctA;
+      return b.w - a.w; // tiebreak by raw wins
+    });
     const leader = divTeams[0];
     let rows = '';
     divTeams.forEach((t, i) => {
       const pct = (t.w + t.l) === 0 ? '.000' : (t.w / (t.w + t.l)).toFixed(3);
       const gb  = i === 0 ? '—' : (((leader.w - leader.l) - (t.w - t.l)) / 2).toFixed(1);
-      rows += `<tr onclick="openTeam(${t.id})"><td class="team-cell">${t.name}</td><td>${t.w}</td><td>${t.l}</td><td>${pct}</td><td class="gb-cell">${gb}</td></tr>`;
+      rows += `<tr onclick="openTeam(${t.id})"><td class="team-cell">${teamLogoHtml(t, 30)} ${t.name}</td><td>${t.w}</td><td>${t.l}</td><td>${pct}</td><td class="gb-cell">${gb}</td></tr>`;
     });
     return `<div class="division-card">
       <div class="division-head">${divName}</div>
@@ -189,15 +197,14 @@ export function renderTeamDetail() {
     <div class="team-logo-box">
       ${t.logo ? `<img src="${t.logo}" class="team-logo-img">` : `<span class="team-logo-emoji">${t.emoji}</span>`}
     </div>
-    <div class="team-logo-actions">
-      <label class="btn sm" style="cursor:pointer">
-        ${t.logo ? 'Change Logo' : 'Upload Logo'}
-        <input type="file" accept="image/*" onchange="uploadTeamLogo(this)" style="display:none">
-      </label>
-      ${t.logo ? `<button class="btn sm danger" onclick="removeTeamLogo()">Remove Logo</button>` : ''}
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:4px">
-        ${t.league} · ${t.division} · Season ${LEAGUE.season}
-      </div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:2px">
+      ${t.league} · ${t.division} · Season ${LEAGUE.season}
+    </div>
+    <div style="margin-top:6px">
+      ${t.logo
+        ? `<span class="logo-text-link" onclick="removeTeamLogo()">Change Logo</span>`
+        : `<label class="logo-text-link" style="cursor:pointer">Upload Logo<input type="file" accept="image/*" onchange="uploadTeamLogo(this)" style="display:none"></label>`
+      }
     </div>
   </div>`;
 
@@ -206,25 +213,12 @@ export function renderTeamDetail() {
   <div class="lu-list" id="td-lineup-list" style="margin-bottom:28px"></div>`;
 
   // Pitchers
-  html += `<div class="section-title" style="margin-bottom:10px">Pitching Staff</div>
-  <table class="roster-table">
-    <thead><tr><th>#</th><th>Name</th><th>Role</th><th>ERA</th><th>W</th><th>L</th><th>K</th><th>BB</th><th>IP</th><th>WHIP*</th></tr></thead>
-    <tbody>`;
-  t.pitchers.forEach((p, i) => {
-    const whip = p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
-    const era  = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
-    html += `<tr class="roster-row" onclick="openCard('${t.id}','${p.id}')">
-      <td><span class="pos-badge">${p.num}</span></td>
-      <td><b>${p.name}</b></td>
-      <td><span class="pos-badge">${i === 0 ? 'SP' : 'RP'}</span> <span class="arch-badge">${p.arch}</span></td>
-      <td>${era}</td><td>${p.career.w}</td><td>${p.career.l}</td>
-      <td>${p.career.k}</td><td>${p.career.bb}</td>
-      <td>${p.career.ip.toFixed(1)}</td><td>${whip}</td>
-    </tr>`;
-  });
-  html += '</tbody></table>';
+  html += `<div class="section-title" style="margin-bottom:10px">Pitching Staff <span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;font-weight:400">drag to reorder · top pitcher starts · click to view card</span></div>
+  <div class="lu-list" id="td-pitcher-list" style="margin-bottom:28px"></div>`;
+
   document.getElementById('team-detail-container').innerHTML = html;
   renderLineupEditor(t);
+  renderPitcherEditor(t);
 }
 
 function renderLineupEditor(t) {
@@ -285,6 +279,74 @@ function renderLineupEditor(t) {
   if (bench.length > 0) {
     container.appendChild(mkDivider(`Bench — ${bench.length}`));
     bench.forEach((b, i) => container.appendChild(mkRow(b, 9 + i)));
+  }
+}
+
+function renderPitcherEditor(t) {
+  const container = document.getElementById('td-pitcher-list');
+  if (!container) return;
+  container.innerHTML = '';
+  let dragging = false;
+
+  const mkRow = (p, idx) => {
+    const era  = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
+    const whip = p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
+    const role = idx < 5 ? 'SP' : idx === 5 ? 'CL' : 'RP';
+    const row = document.createElement('div');
+    row.className = 'lu-row';
+    row.draggable = true;
+    row.innerHTML = `
+      <span class="lu-num" style="color:${idx === 0 ? 'var(--accent)' : 'var(--muted)'}">${idx === 0 ? '★' : idx + 1}</span>
+      <div class="lu-nw">
+        <div class="lu-pn">${p.name} <span class="pos-badge">${role}</span> <span class="arch-badge">${p.arch}</span></div>
+        <div class="lu-ps">#${p.num} · ERA ${era} · WHIP ${whip} · ${p.career.w}W ${p.career.l}L · ${p.career.k}K</div>
+      </div>
+      <span style="color:#ccc;font-size:0.8rem">⠿</span>`;
+
+    row.addEventListener('dragstart', e => {
+      tdPitchDragSrc = idx; dragging = true;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => { row.classList.remove('dragging'); setTimeout(() => { dragging = false; }, 0); });
+    row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+    row.addEventListener('drop', e => {
+      e.preventDefault(); row.classList.remove('drag-over');
+      if (tdPitchDragSrc !== null && tdPitchDragSrc !== idx) {
+        const [mv] = t.pitchers.splice(tdPitchDragSrc, 1);
+        t.pitchers.splice(idx, 0, mv);
+        t.pitchers.forEach((p, i) => { p.pos = i < 5 ? 'SP' : i === 5 ? 'CL' : 'RP'; });
+        t.activePitcher = 0;
+        t.startingPitcherIdx = 0;
+        saveLeague();
+        renderPitcherEditor(t);
+      }
+    });
+    row.addEventListener('click', () => { if (!dragging) openCard(t.id, p.id); });
+    return row;
+  };
+
+  const mkDivider = label => {
+    const d = document.createElement('div');
+    d.style.cssText = 'font-family:"IBM Plex Mono",monospace;font-size:0.58rem;color:var(--muted);padding:8px 2px 3px;text-transform:uppercase;letter-spacing:0.06em;border-top:1px solid var(--line);margin-top:4px;';
+    d.textContent = label;
+    return d;
+  };
+
+  const starters = t.pitchers.slice(0, 5);
+  const closer   = t.pitchers.slice(5, 6);
+  const bullpen  = t.pitchers.slice(6);
+
+  container.appendChild(mkDivider(`Starting Rotation — ${starters.length}`));
+  starters.forEach((p, i) => container.appendChild(mkRow(p, i)));
+
+  container.appendChild(mkDivider('Closer'));
+  closer.forEach((p, i) => container.appendChild(mkRow(p, 5 + i)));
+
+  if (bullpen.length > 0) {
+    container.appendChild(mkDivider(`Bullpen — ${bullpen.length}`));
+    bullpen.forEach((p, i) => container.appendChild(mkRow(p, 6 + i)));
   }
 }
 
@@ -353,6 +415,38 @@ export function openCard(teamId, playerId) {
   document.getElementById('card-overlay').classList.add('open');
 }
 
+function projectPlayer(p) {
+  const PA = 100;
+  const norm = raw => { const tot = Object.values(raw).reduce((s,v)=>s+v,0); const out={}; for (const k in raw) out[k]=raw[k]/tot; return out; };
+  if (p.type === 'batter') {
+    const k  = cl(p.kPct * .6  + MLB.k    * .4, .10, .38);
+    const bb = cl(p.bbPct * .6 + MLB.walk * .4, .04, .16);
+    const go = cl(p.goPct, .12, .32);
+    const pr = norm({ k, go, fo:p.foPct, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single:p.singlePct, dbl:p.doublePct, triple:p.triplePct, hr:p.hrPct });
+    const BB=Math.round(pr.walk*PA), HBP=Math.round(pr.hbp*PA), K=Math.round(pr.k*PA);
+    const AB=PA-BB-HBP;
+    const H1=Math.round(pr.single*PA), H2=Math.round(pr.dbl*PA), H3=Math.round(pr.triple*PA), HR=Math.round(pr.hr*PA);
+    const H=H1+H2+H3+HR, TB=H1+2*H2+3*H3+4*HR;
+    const AVG=AB>0?(H/AB).toFixed(3):'.000';
+    const OBP=((H+BB+HBP)/PA).toFixed(3);
+    const SLG=AB>0?(TB/AB).toFixed(3):'.000';
+    const OPS=(parseFloat(OBP)+parseFloat(SLG)).toFixed(3);
+    return { type:'batter', PA, AB, H, HR, H2, BB, K, AVG, OBP, SLG, OPS };
+  } else {
+    const k  = cl(MLB.k    * .6 + p.kPct  * .4, .10, .38);
+    const bb = cl(MLB.walk * .6 + p.bbPct * .4, .04, .16);
+    const go = cl(MLB.go + (p.goD||0) * .4, .12, .32);
+    const pr = norm({ k, go, fo:MLB.fo, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single:MLB.single, dbl:MLB.double, triple:MLB.triple, hr:MLB.hr });
+    const K=Math.round(pr.k*PA), BB=Math.round(pr.walk*PA);
+    const H=Math.round((pr.single+pr.dbl+pr.triple+pr.hr)*PA), HR=Math.round(pr.hr*PA);
+    const outs=Math.round((pr.k+pr.go+pr.fo+pr.lo)*PA);
+    const IP=outs/3;
+    const ERA=p.era.toFixed(2);
+    const WHIP=IP>0?((BB+H)/IP).toFixed(2):'—';
+    return { type:'pitcher', PA, K, BB, H, HR, IP:IP.toFixed(1), ERA, WHIP };
+  }
+}
+
 function renderCard(t, p) {
   const isBatter = p.type === 'batter';
   const card = document.getElementById('baseball-card');
@@ -370,16 +464,18 @@ function renderCard(t, p) {
         const savg = s.ab > 0 ? (s.h / s.ab).toFixed(3) : '.000';
         seasonsHtml += `<tr><td>${s.year}</td><td>${s.pa || 0}</td><td>${savg}</td><td>${s.hr || 0}</td><td>${s.rbi || 0}</td><td>${s.r || 0}</td><td>${s.bb || 0}</td><td>${s.k || 0}</td></tr>`;
       } else {
-        const sera = s.ip > 0 ? ((s.er / s.ip) * 9).toFixed(2) : '—';
-        seasonsHtml += `<tr><td>${s.year}</td><td>${s.w || 0}-${s.l || 0}</td><td>${sera}</td><td>${(s.ip || 0).toFixed(1)}</td><td>${s.k || 0}</td><td>${s.bb || 0}</td></tr>`;
+        const sera  = s.ip > 0 ? ((s.er / s.ip) * 9).toFixed(2) : '—';
+        const swhip = s.ip > 0 ? (((s.bb || 0) + (s.h || 0)) / s.ip).toFixed(2) : '—';
+        seasonsHtml += `<tr><td>${s.year}</td><td>${s.w || 0}-${s.l || 0}</td><td>${sera}</td><td>${swhip}</td><td>${(s.ip || 0).toFixed(1)}</td><td>${s.k || 0}</td><td>${s.bb || 0}</td></tr>`;
       }
     });
     // Career totals
     if (isBatter) {
       seasonsHtml += `<tr class="total-row"><td>Career</td><td>${p.career.pa}</td><td>${avg}</td><td>${p.career.hr}</td><td>${p.career.rbi}</td><td>${p.career.r}</td><td>${p.career.bb}</td><td>${p.career.k}</td></tr>`;
     } else {
-      const cera = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
-      seasonsHtml += `<tr class="total-row"><td>Career</td><td>${p.career.w}-${p.career.l}</td><td>${cera}</td><td>${p.career.ip.toFixed(1)}</td><td>${p.career.k}</td><td>${p.career.bb}</td></tr>`;
+      const cera  = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
+      const cwhip = p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
+      seasonsHtml += `<tr class="total-row"><td>Career</td><td>${p.career.w}-${p.career.l}</td><td>${cera}</td><td>${cwhip}</td><td>${p.career.ip.toFixed(1)}</td><td>${p.career.k}</td><td>${p.career.bb}</td></tr>`;
     }
   } else {
     seasonsHtml = `<tr><td colspan="8" style="text-align:center;color:var(--muted);font-size:0.7rem;padding:10px">No games played yet. Simulate games to build stats.</td></tr>`;
@@ -398,8 +494,26 @@ function renderCard(t, p) {
     { l:'Stuff',   v: Math.round(((6.0 - p.era) / 4.0) * 100) },
   ];
 
+  const proj = projectPlayer(p);
+  const projHtml = proj.type === 'batter' ? `
+    <div class="pcs-box"><div class="pcs-val">${proj.AVG}</div><div class="pcs-lbl">AVG</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.OBP}</div><div class="pcs-lbl">OBP</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.SLG}</div><div class="pcs-lbl">SLG</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.OPS}</div><div class="pcs-lbl">OPS</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.H}</div><div class="pcs-lbl">H</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.HR}</div><div class="pcs-lbl">HR</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.BB}</div><div class="pcs-lbl">BB</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.K}</div><div class="pcs-lbl">K</div></div>` : `
+    <div class="pcs-box"><div class="pcs-val">${proj.ERA}</div><div class="pcs-lbl">ERA</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.WHIP}</div><div class="pcs-lbl">WHIP</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.K}</div><div class="pcs-lbl">K</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.BB}</div><div class="pcs-lbl">BB</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.H}</div><div class="pcs-lbl">H</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.HR}</div><div class="pcs-lbl">HR</div></div>
+    <div class="pcs-box"><div class="pcs-val">${proj.IP}</div><div class="pcs-lbl">IP</div></div>`;
+
   const battingSeasonCols = `<th>Year</th><th>PA</th><th>AVG</th><th>HR</th><th>RBI</th><th>R</th><th>BB</th><th>K</th>`;
-  const pitchSeasonCols   = `<th>Year</th><th>W-L</th><th>ERA</th><th>IP</th><th>K</th><th>BB</th>`;
+  const pitchSeasonCols   = `<th>Year</th><th>W-L</th><th>ERA</th><th>WHIP</th><th>IP</th><th>K</th><th>BB</th>`;
 
   card.innerHTML = `
   <div class="card-left">
@@ -424,7 +538,7 @@ function renderCard(t, p) {
         <div class="cs-box"><div class="cs-val">${p.career.rbi}</div><div class="cs-lbl">RBI</div></div>
         <div class="cs-box"><div class="cs-val">${ops}</div><div class="cs-lbl">OPS</div></div>
         <div class="cs-box"><div class="cs-val">${p.career.h}</div><div class="cs-lbl">Hits</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.sb}</div><div class="cs-lbl">SB</div></div>
+        <div class="cs-box"><div class="cs-val">${p.career.k}</div><div class="cs-lbl">K</div></div>
         <div class="cs-box"><div class="cs-val">${p.career.bb}</div><div class="cs-lbl">BB</div></div>
         <div class="cs-box"><div class="cs-val">${obp}</div><div class="cs-lbl">OBP</div></div>
       </div>
@@ -454,15 +568,52 @@ function renderCard(t, p) {
     <div>
       <div class="stats-section-title">Scouting Report</div>
       <div class="rating-grid">
-        ${ratings.map(r => `
-        <div class="rating-row">
+        ${ratings.map(r => {
+          const val = Math.max(0, Math.min(99, r.v));
+          return `<div class="rating-row">
           <div class="rating-label">${r.l}</div>
-          <div class="rating-bar-bg"><div class="rating-bar-fill" style="width:${Math.max(5, Math.min(100, r.v))}%"></div></div>
-          <div class="rating-val">${Math.max(0, Math.min(99, r.v))}</div>
-        </div>`).join('')}
+          <div class="rating-bar-bg" onclick="updateRatingFromBar('${r.l}', event)" style="cursor:pointer"><div class="rating-bar-fill" id="rbar-${r.l.replace(' ','')}" style="width:${Math.max(2, val)}%"></div></div>
+          <input class="rating-input" type="number" min="0" max="99" value="${val}" id="rinput-${r.l.replace(' ','')}" onchange="updateRating('${r.l}', this.value)">
+        </div>`;
+        }).join('')}
       </div>
     </div>
+
+    <div>
+      <div class="stats-section-title">Projected Stats <span style="font-size:0.55rem;font-weight:400;color:var(--muted)">${proj.type === 'batter' ? '/ 100 PA vs avg pitcher' : '/ 100 PA faced vs avg lineup'}</span></div>
+      <div class="proj-stats-grid">${projHtml}</div>
+    </div>
   </div>`;
+}
+
+export function updateRatingFromBar(label, event) {
+  const bar = event.currentTarget;
+  const v = Math.round((event.offsetX / bar.offsetWidth) * 99);
+  const input = document.getElementById(`rinput-${label.replace(' ', '')}`);
+  if (input) input.value = v;
+  updateRating(label, v);
+}
+
+export function updateRating(label, rawVal) {
+  if (!currentPlayer) return;
+  const p = currentPlayer.player;
+  const v = Math.max(0, Math.min(99, parseInt(rawVal) || 0));
+
+  if (p.type === 'batter') {
+    if (label === 'Contact')  p.kPct   = cl((1 - v/100) * 0.40, 0.10, 0.40);
+    if (label === 'Power')    p.hrPct  = cl((v/100) * 0.08, 0.005, 0.08);
+    if (label === 'Patience') p.bbPct  = cl((v/100) * 0.18, 0.04, 0.18);
+    if (label === 'Speed')    p.sbRate = cl((v/100) * 0.15, 0.02, 0.25);
+  } else {
+    if (label === 'Strikeout') p.kPct  = cl((v/100) * 0.35, 0.14, 0.35);
+    if (label === 'Control')   p.bbPct = cl((1 - v/100) * 0.14, 0.04, 0.14);
+    if (label === 'GB Rate')   p.goD   = (v/100) * 0.08 - 0.04;
+    if (label === 'Stuff')     p.era   = cl(6.0 - (v/100) * 4.0, 2.0, 6.0);
+  }
+
+  // Update bar width live
+  saveLeague();
+  renderCard(currentPlayer.team, currentPlayer.player);
 }
 
 export function updatePlayerName(name) {
@@ -492,14 +643,33 @@ export function setFilter(f, el) {
   renderPlayersTable();
 }
 
+export function setTeamFilter(val) {
+  playerTeamFilter = val;
+  renderPlayersTable();
+}
+
 export function renderPlayersTable() {
   const search = (document.getElementById('player-search')?.value || '').toLowerCase();
+  const tf = playerTeamFilter.toLowerCase();
+  const matchesTeam = p => !tf || p.teamName.toLowerCase() === tf;
+
+  // Team filter dropdown
+  const tfBar = document.getElementById('team-filter-bar');
+  if (tfBar) {
+    const teamNames = [...new Set(LEAGUE.teams.map(t => t.name))].sort();
+    tfBar.innerHTML = `<label style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted);margin-right:8px">Filter by team:</label>
+      <select class="sched-team-filter" onchange="setTeamFilter(this.value)">
+        <option value="">All Teams</option>
+        ${teamNames.map(n => `<option value="${n}"${playerTeamFilter === n ? ' selected' : ''}>${n}</option>`).join('')}
+      </select>
+      ${playerTeamFilter ? ` <button class="btn sm" style="margin-left:6px" onclick="setTeamFilter('')">✕ Clear</button>` : ''}`;
+  }
   let players = [];
   if (playerFilter !== 'PIT') {
-    allBatters().forEach(b => { if (!search || b.name.toLowerCase().includes(search) || b.teamName.toLowerCase().includes(search)) players.push(b); });
+    allBatters().forEach(b => { if (matchesTeam(b) && (!search || b.name.toLowerCase().includes(search) || b.teamName.toLowerCase().includes(search))) players.push(b); });
   }
   if (playerFilter !== 'BAT') {
-    allPitchers().forEach(p => { if (!search || p.name.toLowerCase().includes(search) || p.teamName.toLowerCase().includes(search)) players.push(p); });
+    allPitchers().forEach(p => { if (matchesTeam(p) && (!search || p.name.toLowerCase().includes(search) || p.teamName.toLowerCase().includes(search))) players.push(p); });
   }
 
   // Sort
@@ -509,7 +679,8 @@ export function renderPlayersTable() {
     else if (sortCol === 'hr')  { av = a.career.hr; bv = b.career.hr; }
     else if (sortCol === 'rbi') { av = a.career.rbi; bv = b.career.rbi; }
     else if (sortCol === 'k')   { av = a.career.k; bv = b.career.k; }
-    else if (sortCol === 'era') { av = a.career?.ip > 0 ? (a.career.er / a.career.ip) * 9 : a.era || 99; bv = b.career?.ip > 0 ? (b.career.er / b.career.ip) * 9 : b.era || 99; }
+    else if (sortCol === 'era')  { av = a.career?.ip > 0 ? (a.career.er / a.career.ip) * 9 : a.era || 99; bv = b.career?.ip > 0 ? (b.career.er / b.career.ip) * 9 : b.era || 99; }
+    else if (sortCol === 'whip') { av = a.career?.ip > 0 ? (a.career.bb + a.career.h) / a.career.ip : 99; bv = b.career?.ip > 0 ? (b.career.bb + b.career.h) / b.career.ip : 99; }
     else if (sortCol === 'pa')  { av = a.career.pa || 0; bv = b.career.pa || 0; }
     return (av - bv) * sortDir;
   });
@@ -526,6 +697,7 @@ export function renderPlayersTable() {
     <th onclick="doSort('rbi')">RBI</th>
     <th onclick="doSort('k')">K</th>
     <th onclick="doSort('era')">ERA</th>
+    <th onclick="doSort('whip')">WHIP</th>
   `;
   thead.querySelectorAll('th').forEach(th => {
     if (th.textContent.toLowerCase().includes(sortCol)) {
@@ -535,13 +707,14 @@ export function renderPlayersTable() {
 
   const tbody = document.getElementById('players-tbody');
   if (players.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No players found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No players found.</td></tr>';
     return;
   }
 
   tbody.innerHTML = players.map(p => {
-    const avg = p.type === 'batter'  ? battingAvg(p).toFixed(3) : '—';
-    const era = p.type === 'pitcher' ? (p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)) : '—';
+    const avg  = p.type === 'batter'  ? battingAvg(p).toFixed(3) : '—';
+    const era  = p.type === 'pitcher' ? (p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)) : '—';
+    const whip = p.type === 'pitcher' ? (p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—') : '—';
     return `<tr onclick="openCardById('${p.id}')">
       <td><b>${p.name}</b></td>
       <td>${p.teamName || ''}</td>
@@ -552,6 +725,7 @@ export function renderPlayersTable() {
       <td>${p.career.rbi || 0}</td>
       <td>${p.career.k || 0}</td>
       <td>${era}</td>
+      <td>${whip}</td>
     </tr>`;
   }).join('');
 }
@@ -666,43 +840,70 @@ function renderScheduleView(cont) {
     return;
   }
 
+  // Team filter dropdown
+  const teamNames = [...new Set(LEAGUE.teams.map(t => t.name))].sort();
+  html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+    <label style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted)">Filter by team:</label>
+    <select class="sched-team-filter" onchange="schedSetTeamFilter(this.value)">
+      <option value="">All Teams</option>
+      ${teamNames.map(n => `<option value="${n}"${schedTeamFilter === n ? ' selected' : ''}>${n}</option>`).join('')}
+    </select>
+    ${schedTeamFilter ? `<button class="btn sm" onclick="schedSetTeamFilter('')">✕ Clear</button>` : ''}
+  </div>`;
+
   // Preserve original indices for click handlers
+  const tf = schedTeamFilter.toLowerCase();
   const indexed  = sched.map((g, i) => ({ ...g, _idx: i }));
-  const upcoming = indexed.filter(g => !g.played).slice(0, 50);
-  const recent   = indexed.filter(g => g.played).reverse();
+  const matchesFilter = g => {
+    if (!tf) return true;
+    const away = LEAGUE.teams.find(t => t.id === g.awayId);
+    const home = LEAGUE.teams.find(t => t.id === g.homeId);
+    return (away && away.name.toLowerCase() === tf) || (home && home.name.toLowerCase() === tf);
+  };
+  const upcoming = indexed.filter(g => !g.played && matchesFilter(g)).slice(0, 50);
+  const recent   = indexed.filter(g => g.played && matchesFilter(g)).reverse();
+
+  let leftCol = '';
+  let rightCol = '';
 
   if (upcoming.length > 0) {
-    html += `<div class="section-title" style="margin-bottom:10px">Upcoming Games</div><div class="sched-list">`;
+    leftCol += `<div class="section-title" style="margin-bottom:10px">Upcoming Games</div><div class="sched-list">`;
     for (const g of upcoming) {
       const away = LEAGUE.teams.find(t => t.id === g.awayId);
       const home = LEAGUE.teams.find(t => t.id === g.homeId);
       if (!away || !home) continue;
-      html += `<div class="sched-row sched-clickable" onclick="schedPlayGame(${g._idx})">
+      leftCol += `<div class="sched-row sched-clickable" onclick="schedPlayGame(${g._idx})">
         <span class="sched-team">${teamLogoHtml(away, 18)} ${away.name}</span>
         <span class="sched-at">@</span>
         <span class="sched-team">${teamLogoHtml(home, 18)} ${home.name}</span>
       </div>`;
     }
-    const rem = sched.filter(g => !g.played).length;
-    if (rem > 50) html += `<div class="sched-more">…and ${rem - 50} more games</div>`;
-    html += '</div>';
+    const rem = indexed.filter(g => !g.played && matchesFilter(g)).length;
+    if (rem > 50) leftCol += `<div class="sched-more">…and ${rem - 50} more games</div>`;
+    leftCol += '</div>';
   }
 
   if (recent.length > 0) {
-    html += `<div class="section-title" style="margin-top:28px;margin-bottom:10px">Recent Results</div><div class="sched-list">`;
+    rightCol += `<div class="section-title" style="margin-bottom:10px">Recent Results</div><div class="sched-list">`;
     for (const g of recent) {
       const away = LEAGUE.teams.find(t => t.id === g.awayId);
       const home = LEAGUE.teams.find(t => t.id === g.homeId);
       if (!away || !home) continue;
       const awayWon = (g.awayScore ?? 0) > (g.homeScore ?? 0);
-      html += `<div class="sched-row played sched-clickable" onclick="schedPlayGame(${g._idx})">
+      rightCol += `<div class="sched-row played sched-clickable" onclick="schedPlayGame(${g._idx})">
         <span class="sched-team${awayWon ? ' sched-winner' : ''}">${teamLogoHtml(away, 18)} ${away.name}</span>
         <span class="sched-score">${g.awayScore ?? '—'} – ${g.homeScore ?? '—'}</span>
         <span class="sched-team${!awayWon ? ' sched-winner' : ''}">${teamLogoHtml(home, 18)} ${home.name}</span>
       </div>`;
     }
-    html += '</div>';
+    rightCol += '</div>';
   }
+
+  html += `<div class="sched-columns">
+    <div class="sched-col-left">${leftCol}</div>
+    <div class="sched-col-divider"></div>
+    <div class="sched-col-right">${rightCol}</div>
+  </div>`;
   cont.innerHTML = html;
 }
 
@@ -852,6 +1053,11 @@ export function schedNewSeason() {
 
 export function schedLoadOpen() {
   schedShowLoad = !schedShowLoad;
+  renderSchedule();
+}
+
+export function schedSetTeamFilter(val) {
+  schedTeamFilter = val;
   renderSchedule();
 }
 

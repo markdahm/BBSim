@@ -17,7 +17,6 @@
   </div>
   <div class="nav-section">League</div>
   <div class="nav-item active" onclick="nav('home')" id="nav-home"><span class="nav-icon">🏆</span> League Home</div>
-  <div class="nav-item" onclick="nav('teams')" id="nav-teams"><span class="nav-icon">⚾</span> Teams</div>
   <div class="nav-item" onclick="nav('players')" id="nav-players"><span class="nav-icon">👤</span> Players</div>
   <div class="nav-item" onclick="nav('schedule')" id="nav-schedule"><span class="nav-icon">📅</span> Schedule</div>
   <div class="nav-section">Game</div>
@@ -60,17 +59,7 @@
     </div>
   </div>
 
-  <!-- TEAMS PAGE -->
-  <div class="page" id="page-teams">
-    <div class="topbar">
-      <div><div class="topbar-title">Teams</div><div class="topbar-sub" id="teams-sub">All 30 Franchises</div></div>
-    </div>
-    <div class="page" style="display:block;padding:24px 28px 60px">
-      <div id="teams-container"></div>
-    </div>
-  </div>
-
-  <!-- TEAM DETAIL (not a full page, rendered inside teams) -->
+  <!-- TEAM DETAIL -->
   <div class="page" id="page-team-detail">
     <div class="topbar">
       <div><div class="topbar-title" id="td-title">Team</div><div class="topbar-sub" id="td-sub">Roster</div></div>
@@ -79,7 +68,7 @@
       </div>
     </div>
     <div class="page" style="display:block;padding:24px 28px 60px">
-      <div class="breadcrumb" onclick="nav('teams')"><span>← Teams</span></div>
+      <div class="breadcrumb" onclick="nav('home')"><span>← League Home</span></div>
       <div id="team-detail-container"></div>
     </div>
   </div>
@@ -98,6 +87,7 @@
           <button class="filter-tab" onclick="setFilter('PIT',this)">Pitchers</button>
         </div>
       </div>
+      <div id="team-filter-bar" style="margin-bottom:14px"></div>
       <table class="players-table" id="players-table">
         <thead><tr id="players-thead"></tr></thead>
         <tbody id="players-tbody"></tbody>

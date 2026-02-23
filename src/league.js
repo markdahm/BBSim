@@ -9,7 +9,15 @@ export let LEAGUE = null;
 export function initLeague() {
   const saved = localStorage.getItem('diamond-league-v3');
   if (saved) {
-    try { LEAGUE = JSON.parse(saved); return; } catch(e) {}
+    try {
+      LEAGUE = JSON.parse(saved);
+      // Restore logos stored separately to avoid localStorage quota limits
+      (LEAGUE.teams || []).forEach(t => {
+        const logo = localStorage.getItem(`dlg-logo-${t.id}`);
+        if (logo) t.logo = logo;
+      });
+      return;
+    } catch(e) {}
   }
   generateLeague();
 }
@@ -51,9 +59,24 @@ export function generateLeague() {
 }
 
 export function saveLeague() {
-  localStorage.setItem('diamond-league-v3', JSON.stringify(LEAGUE));
-  const ind = document.getElementById('save-ind');
-  if (ind) { ind.textContent = '✓ Saved'; ind.className = 'save-indicator saved'; setTimeout(() => { ind.textContent = '● Auto-saved to browser'; ind.className = 'save-indicator'; }, 2000); }
+  // Save logos to separate keys so the main payload stays within localStorage limits
+  (LEAGUE.teams || []).forEach(t => {
+    if (t.logo) {
+      try { localStorage.setItem(`dlg-logo-${t.id}`, t.logo); } catch(e) {}
+    } else {
+      localStorage.removeItem(`dlg-logo-${t.id}`);
+    }
+  });
+  // Save league data without logo blobs
+  const slim = { ...LEAGUE, teams: LEAGUE.teams.map(({ logo, ...rest }) => rest) };
+  try {
+    localStorage.setItem('diamond-league-v3', JSON.stringify(slim));
+    const ind = document.getElementById('save-ind');
+    if (ind) { ind.textContent = '✓ Saved'; ind.className = 'save-indicator saved'; setTimeout(() => { ind.textContent = '● Auto-saved to browser'; ind.className = 'save-indicator'; }, 2000); }
+  } catch(e) {
+    const ind = document.getElementById('save-ind');
+    if (ind) { ind.textContent = '⚠ Storage full — Export to save'; ind.className = 'save-indicator'; }
+  }
 }
 
 // ====================================================================
@@ -102,23 +125,25 @@ export function mkPitcher() {
 // ====================================================================
 
 function mkBatterFromCSV(row) {
-  const contact  = cl(parseInt(row.contact)  || 3, 1, 5);
-  const power    = cl(parseInt(row.power)    || 3, 1, 5);
-  const patience = cl(parseInt(row.patience) || 3, 1, 5);
-  const speed    = cl(parseInt(row.speed)    || 3, 1, 5);
+  // CSV values are 0–100, same scale as the scouting report editor
+  const contact  = cl(parseInt(row.contact)  || 50, 0, 99);
+  const power    = cl(parseInt(row.power)    || 50, 0, 99);
+  const patience = cl(parseInt(row.patience) || 50, 0, 99);
+  const speed    = cl(parseInt(row.speed)    || 50, 0, 99);
 
-  const avg       = cl(0.195 + (contact-1)/4 * 0.130, .190, .330);
-  const kPct      = cl(0.360 - (contact-1)/4 * 0.160 - (patience-1)/4 * 0.060, .10, .40);
-  const hrPct     = cl(0.008 + (power-1)/4 * 0.055, .005, .08);
-  const doublePct = cl(0.022 + (power-1)/4 * 0.050, .02, .09);
-  const bbPct     = cl(0.035 + (patience-1)/4 * 0.130, .04, .18);
-  const sbRate    = cl(0.015 + (speed-1)/4 * 0.185, .02, .25);
-  const triplePct = cl(0.001 + (speed-1)/4 * 0.011, .001, .012);
-  const goPct     = cl(0.250 - (power-1)/4 * 0.080, .12, .30);
-  const foPct     = cl(0.140 + (power-1)/4 * 0.060, .10, .25);
+  // Same inverse formulas as updateRating — CSV value → internal probability
+  const kPct      = cl((1 - contact/100)  * 0.40, 0.10, 0.40);
+  const hrPct     = cl((power/100)         * 0.08, 0.005, 0.08);
+  const bbPct     = cl((patience/100)      * 0.18, 0.04, 0.18);
+  const sbRate    = cl((speed/100)         * 0.15, 0.02, 0.25);
+  const doublePct = cl(0.022 + (power/100) * 0.050, .02, .09);
+  const triplePct = cl(0.001 + (speed/100) * 0.011, .001, .012);
+  const goPct     = cl(0.250 - (power/100) * 0.080, .12, .30);
+  const foPct     = cl(0.140 + (power/100) * 0.060, .10, .25);
+  const avg       = cl(0.195 + (contact/100) * 0.130, .190, .330);
   const singlePct = cl(MLB.single + rand(-.01, .01), .08, .22);
-  const arch = power >= 4 ? 'Power Hitter' : contact >= 4 ? 'Contact Hitter'
-    : patience >= 4 ? 'Patient Hitter' : speed >= 4 ? 'Speed Demon' : 'Balanced';
+  const arch = power >= 75 ? 'Power Hitter' : contact >= 75 ? 'Contact Hitter'
+    : patience >= 75 ? 'Patient Hitter' : speed >= 75 ? 'Speed Demon' : 'Balanced';
   return {
     id: Math.random().toString(36).slice(2),
     name: `${row.firstName} ${row.lastName}`,
@@ -133,16 +158,19 @@ function mkBatterFromCSV(row) {
 }
 
 function mkPitcherFromCSV(row) {
-  const strikeout = cl(parseInt(row.strikeout) || 3, 1, 5);
-  const gbRate    = cl(parseInt(row.gbRate)    || 3, 1, 5);
-  const control   = cl(parseInt(row.control)   || 3, 1, 5);
-  const stuff     = cl(parseInt(row.stuff)     || 3, 1, 5);
-  const kPct  = cl(0.120 + (strikeout-1)/4 * 0.220, .14, .35);
-  const bbPct = cl(0.130 - (control-1)/4  * 0.090, .04, .14);
-  const era   = cl(5.80  - (stuff-1)/4    * 3.300, 2.20, 6.00);
-  const goD   = -0.06 + (gbRate-1)/4 * 0.14;
-  const arch  = stuff >= 4 ? 'Ace' : strikeout >= 4 ? 'Strikeout Artist'
-    : control >= 4 ? 'Control Pitcher' : 'Reliever';
+  // CSV values are 0–100, same scale as the scouting report editor
+  const strikeout = cl(parseInt(row.strikeout) || 50, 0, 99);
+  const gbRate    = cl(parseInt(row.gbRate)    || 50, 0, 99);
+  const control   = cl(parseInt(row.control)   || 50, 0, 99);
+  const stuff     = cl(parseInt(row.stuff)     || 50, 0, 99);
+
+  // Same inverse formulas as updateRating — CSV value → internal probability
+  const kPct  = cl((strikeout/100)       * 0.35, 0.14, 0.35);
+  const bbPct = cl((1 - control/100)     * 0.14, 0.04, 0.14);
+  const era   = cl(6.0 - (stuff/100)     * 4.0,  2.0,  6.0);
+  const goD   = (gbRate/100) * 0.08 - 0.04;
+  const arch  = stuff >= 75 ? 'Ace' : strikeout >= 75 ? 'Strikeout Artist'
+    : control >= 75 ? 'Control Pitcher' : 'Reliever';
   return {
     id: Math.random().toString(36).slice(2),
     name: `${row.firstName} ${row.lastName}`,
@@ -189,6 +217,9 @@ const REAL_MLB_DIVISIONS = {
 };
 
 export function importFromCSV(text) {
+  // Clear any logos stored from a previous league so they don't bleed into the new one
+  if (LEAGUE && LEAGUE.teams) LEAGUE.teams.forEach(t => localStorage.removeItem(`dlg-logo-${t.id}`));
+
   // Strip BOM and normalize line endings
   const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = clean.trim().split('\n');
@@ -325,7 +356,10 @@ export function importRosters(input) {
     const text = e.target.result;
     if (file.name.toLowerCase().endsWith('.json')) {
       try {
+        // Clear old logo keys before loading new league
+        if (LEAGUE && LEAGUE.teams) LEAGUE.teams.forEach(t => localStorage.removeItem(`dlg-logo-${t.id}`));
         LEAGUE = JSON.parse(text);
+        // Logos in the JSON are already on team objects — saveLeague will split them out to separate keys
         saveLeague();
         window.nav('home');
       } catch(err) {
