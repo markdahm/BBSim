@@ -2,29 +2,33 @@
 // BBSim - Diamond League Baseball Simulator
 // Entry point: imports modules, exposes window globals, boots app.
 // ====================================================================
-import { initLeague, importRosters } from './src/league.js';
+import { initLeague, importRosters, exportLeague } from './src/league.js';
 import {
-  nav, editLeagueName, saveLeagueName, cancelLeagueName, advanceSeason,
-  openTeam, editTeamName, saveTeamName, cancelTeamName,
+  nav, editLeagueName, saveLeagueName, cancelLeagueName, clearSeason, advanceSeason,
+  openTeam, editTeamName, saveTeamName, cancelTeamName, uploadTeamLogo, removeTeamLogo,
   openCard, openCardById, closeCard, closeCardDirect,
   updatePlayerName, setFilter, doSort, renderPlayersTable,
+  schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
+  schedLoadOpen, schedLoadPick,
 } from './src/views.js';
-import { startGame, gSinglePitch, gPitch, gAuto, gAutoGame, gShowLineup, resolveDec, newMatchup, gToggleSettings, gSetDelay } from './src/game.js';
+import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gShowLineup, resolveDec, newMatchup, gToggleSettings, gSetDelay } from './src/game.js';
 
 // ── Expose functions referenced in HTML onclick attributes ──
 Object.assign(window, {
   // Navigation & views
   nav,
   editLeagueName, saveLeagueName, cancelLeagueName,
-  advanceSeason,
-  openTeam, editTeamName, saveTeamName, cancelTeamName,
+  clearSeason, advanceSeason,
+  openTeam, editTeamName, saveTeamName, cancelTeamName, uploadTeamLogo, removeTeamLogo,
   openCard, openCardById, closeCard, closeCardDirect,
   updatePlayerName,
   setFilter, doSort, renderPlayersTable,
-  // Roster import
-  importRosters,
+  schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
+  schedLoadOpen, schedLoadPick,
+  // Roster import / export
+  importRosters, exportLeague,
   // Game engine
-  startGame, gSinglePitch, gPitch, gAuto, gAutoGame, gShowLineup, resolveDec, newMatchup, gToggleSettings, gSetDelay,
+  startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gShowLineup, resolveDec, newMatchup, gToggleSettings, gSetDelay,
 });
 
 // ── Boot ──

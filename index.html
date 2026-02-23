@@ -19,6 +19,7 @@
   <div class="nav-item active" onclick="nav('home')" id="nav-home"><span class="nav-icon">🏆</span> League Home</div>
   <div class="nav-item" onclick="nav('teams')" id="nav-teams"><span class="nav-icon">⚾</span> Teams</div>
   <div class="nav-item" onclick="nav('players')" id="nav-players"><span class="nav-icon">👤</span> Players</div>
+  <div class="nav-item" onclick="nav('schedule')" id="nav-schedule"><span class="nav-icon">📅</span> Schedule</div>
   <div class="nav-section">Game</div>
   <div class="nav-item" onclick="nav('simulate')" id="nav-simulate"><span class="nav-icon">▶</span> Simulate Game</div>
   <div class="league-picker">
@@ -40,10 +41,15 @@
       </div>
       <div class="topbar-actions">
         <button class="btn sm" onclick="editLeagueName()">Edit Name</button>
-        <label class="btn sm" style="cursor:pointer">Import Rosters
-          <input type="file" accept=".txt,.csv,.tsv" onchange="importRosters(this)" style="display:none">
-        </label>
-        <button class="btn sm primary" onclick="advanceSeason()">Advance Season →</button>
+        <details class="dropdown">
+          <summary class="btn sm">League Settings ▾</summary>
+          <div class="dropdown-menu">
+            <button class="dropdown-item" onclick="exportLeague()">Export League</button>
+            <label class="dropdown-item">Import Roster
+              <input type="file" accept=".txt,.csv,.tsv,.json" onchange="importRosters(this)" style="display:none">
+            </label>
+          </div>
+        </details>
       </div>
     </div>
     <div class="page" style="display:block;padding:24px 28px 60px">
@@ -95,6 +101,20 @@
         <thead><tr id="players-thead"></tr></thead>
         <tbody id="players-tbody"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- SCHEDULE PAGE -->
+  <div class="page" id="page-schedule">
+    <div class="topbar">
+      <div><div class="topbar-title">Schedule</div><div class="topbar-sub" id="schedule-sub">Season games</div></div>
+      <div class="topbar-actions">
+        <button class="btn sm" onclick="clearSeason()">Clear Season</button>
+        <button class="btn sm primary" onclick="advanceSeason()">Advance Season →</button>
+      </div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div id="schedule-container"></div>
     </div>
   </div>
 

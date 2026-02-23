@@ -11,6 +11,14 @@ export function randomColor() {
   return colors[ri(colors.length)];
 }
 
+// ── Team logo ──
+export function teamLogoHtml(team, size = 22) {
+  if (team && team.logo) {
+    return `<img src="${team.logo}" style="width:${size}px;height:${size}px;object-fit:contain;vertical-align:middle;border-radius:2px">`;
+  }
+  return (team && team.emoji) || '';
+}
+
 // ── DOM helpers ──
 export function setText(id, val) { const e = document.getElementById(id); if (e) e.textContent = val; }
 export function mkEl(tag, cls, txt) { const e = document.createElement(tag); e.className = cls; e.textContent = txt; return e; }

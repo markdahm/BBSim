@@ -1,5 +1,5 @@
 import { MLB } from './data.js';
-import { ri, cl, battingAvg, setText, mkEl } from './utils.js';
+import { ri, cl, battingAvg, setText, mkEl, teamLogoHtml } from './utils.js';
 import { LEAGUE, saveLeague } from './league.js';
 
 // ====================================================================
@@ -15,6 +15,8 @@ let awayTeamId = null;
 let pitchDelay = 0;
 let homeTeamId = null;
 let gLineupView = 0;
+let simMode = 'expo';        // 'expo' | 'schedule'
+let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 
 // ====================================================================
 // SIMULATE PAGE ENTRY POINT
@@ -22,23 +24,13 @@ let gLineupView = 0;
 export function renderSimulate() {
   const cont = document.getElementById('sim-container');
   if (!G.running) {
-    // Show team picker
-    const opts = LEAGUE.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-    cont.innerHTML = `
-      <div class="matchup-picker">
-        <div class="section-title">New Game</div>
-        <div class="mp-row">
-          <div class="mp-label">Away</div>
-          <select class="mp-select" id="sel-away">${opts}</select>
-        </div>
-        <div class="mp-row">
-          <div class="mp-label">Home</div>
-          <select class="mp-select" id="sel-home">${opts}</select>
-        </div>
-        <div style="margin-top:8px">
-          <button class="btn primary" onclick="startGame()">Play Ball!</button>
-        </div>
-      </div>
+    const modeBar = `
+      <div class="sim-mode-bar">
+        <button class="sim-mode-btn${simMode === 'expo' ? ' active' : ''}" onclick="simSetMode('expo')">Expo</button>
+        <button class="sim-mode-btn${simMode === 'schedule' ? ' active' : ''}" onclick="simSetMode('schedule')">Schedule</button>
+      </div>`;
+
+    const statsPanel = `
       <div style="margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px">
         <div class="side-title" style="margin-bottom:10px">MLB 2024 Avg PA Outcomes</div>
         <table class="ptbl">
@@ -52,18 +44,82 @@ export function renderSimulate() {
         </table>
         <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;color:var(--muted);margin-top:8px">Source: FanGraphs/Baseball Reference 2024</div>
       </div>`;
-    // Default to different teams
-    if (LEAGUE.teams.length >= 2) {
-      document.getElementById('sel-home').selectedIndex = 1;
+
+    if (simMode === 'expo') {
+      const opts = LEAGUE.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+      cont.innerHTML = `
+        <div class="matchup-picker">
+          <div class="section-title">New Game</div>
+          ${modeBar}
+          <div class="mp-row">
+            <div class="mp-label">Away</div>
+            <select class="mp-select" id="sel-away">${opts}</select>
+          </div>
+          <div class="mp-row">
+            <div class="mp-label">Home</div>
+            <select class="mp-select" id="sel-home">${opts}</select>
+          </div>
+          <div style="margin-top:8px">
+            <button class="btn primary" onclick="startGame()">Play Ball!</button>
+          </div>
+        </div>${statsPanel}`;
+      if (LEAGUE.teams.length >= 2) document.getElementById('sel-home').selectedIndex = 1;
+
+    } else {
+      // Schedule mode
+      const sched = LEAGUE.schedule || [];
+      const nextIdx = sched.findIndex(g => !g.played);
+      const played  = sched.filter(g => g.played).length;
+      let picker;
+      if (sched.length === 0) {
+        picker = `<div style="padding:20px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">No schedule found. Build one on the Schedule page.</div>`;
+      } else if (nextIdx === -1) {
+        picker = `<div style="padding:20px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">All ${sched.length} games have been played!</div>`;
+      } else {
+        const g    = sched[nextIdx];
+        const away = LEAGUE.teams.find(t => t.id === g.awayId);
+        const home = LEAGUE.teams.find(t => t.id === g.homeId);
+        picker = `
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted);margin-bottom:14px">
+            Game ${played + 1} of ${sched.length}
+          </div>
+          <div class="sched-next-game">
+            <span class="sng-team">${away.emoji} ${away.name}</span>
+            <span class="sng-at">@</span>
+            <span class="sng-team">${home.emoji} ${home.name}</span>
+          </div>
+          <div style="margin-top:14px">
+            <button class="btn primary" onclick="startScheduleGame()">Play Ball!</button>
+          </div>`;
+      }
+      cont.innerHTML = `
+        <div class="matchup-picker">
+          <div class="section-title">New Game</div>
+          ${modeBar}
+          ${picker}
+        </div>${statsPanel}`;
     }
   } else {
     renderGameUI();
   }
 }
 
-export function startGame() {
-  const awayId = parseInt(document.getElementById('sel-away').value);
-  const homeId = parseInt(document.getElementById('sel-home').value);
+export function simSetMode(mode) {
+  simMode = mode;
+  renderSimulate();
+}
+
+export function startScheduleGame() {
+  const sched = LEAGUE.schedule || [];
+  const idx = sched.findIndex(g => !g.played);
+  if (idx === -1) return;
+  schedGameIdx = idx;
+  startGame(sched[idx].awayId, sched[idx].homeId);
+}
+
+export function startGame(awayIdArg, homeIdArg) {
+  const awayId = awayIdArg !== undefined ? awayIdArg : parseInt(document.getElementById('sel-away').value);
+  const homeId = homeIdArg !== undefined ? homeIdArg : parseInt(document.getElementById('sel-home').value);
   if (awayId === homeId) { alert('Please choose different teams.'); return; }
   awayTeamId = awayId; homeTeamId = homeId;
   const away = LEAGUE.teams.find(t => t.id === awayId);
@@ -77,7 +133,7 @@ export function startGame() {
     bases:[false,false,false],
     score:[Array(9).fill(null),Array(9).fill(null)],
     runsStart:[0,0], runs:[0,0], hits:[0,0], errors:[0,0],
-    lineupIdx:[0,0], over:false,
+    lineupIdx:[0,0], over:false, walkoffPending:false,
     boxBatters:[{},{}], boxPitchers:[{},{}],
   };
   away.activePitcher = 0; home.activePitcher = 0;
@@ -94,6 +150,37 @@ export function newMatchup() {
   renderSimulate();
 }
 
+// Play a specific game from the schedule by index
+export function schedPlayGame(schedIdx) {
+  const sched = LEAGUE.schedule || [];
+  const game = sched[schedIdx];
+  if (!game) return;
+  if (G.running) {
+    if (!confirm('Do you want to erase the current game in progress?')) return;
+    G.running = false;
+  }
+  schedGameIdx = schedIdx;
+  simMode = 'schedule';
+  window.nav('simulate');
+  startGame(game.awayId, game.homeId);
+}
+
+// Immediately start the next unplayed scheduled game
+export function gNextGame() {
+  const sched = LEAGUE.schedule || [];
+  const idx = sched.findIndex(g => !g.played);
+  if (idx === -1) {
+    // No more games — fall back to schedule picker
+    G.running = false;
+    simMode = 'schedule';
+    renderSimulate();
+    return;
+  }
+  schedGameIdx = idx;
+  simMode = 'schedule';
+  startGame(sched[idx].awayId, sched[idx].homeId);
+}
+
 function renderGameUI() {
   const away = G.away, home = G.home;
   document.getElementById('sim-container').innerHTML = `
@@ -101,15 +188,15 @@ function renderGameUI() {
   <div class="sim-main">
 
     <div class="scoreboard">
-      <div class="score-header">
+      <div class="score-header" id="g-score-header">
         <div></div>
         <div style="text-align:center">1</div><div style="text-align:center">2</div><div style="text-align:center">3</div>
         <div style="text-align:center">4</div><div style="text-align:center">5</div><div style="text-align:center">6</div>
         <div style="text-align:center">7</div><div style="text-align:center">8</div><div style="text-align:center">9</div>
-        <div style="text-align:center">R</div><div style="text-align:center">H</div><div style="text-align:center">E</div>
+        <div class="sR-hdr">R</div><div class="sH-hdr">H</div><div class="sE-hdr">E</div>
       </div>
-      <div class="score-row" id="g-row-away"><div class="score-team-name">${away.emoji} ${away.name}</div></div>
-      <div class="score-row" id="g-row-home"><div class="score-team-name">${home.emoji} ${home.name}</div></div>
+      <div class="score-row" id="g-row-away"><div class="score-team-name">${teamLogoHtml(away, 20)} ${away.name}</div></div>
+      <div class="score-row" id="g-row-home"><div class="score-team-name">${teamLogoHtml(home, 20)} ${home.name}</div></div>
     </div>
 
     <div class="runners-bar">
@@ -141,6 +228,7 @@ function renderGameUI() {
       <button class="btn" id="g-btn-auto" onclick="gAuto()">Auto-Play Inning</button>
       <button class="btn" id="g-btn-game" onclick="gAutoGame()">Auto-Play Game</button>
       <button class="btn" onclick="newMatchup()">New Matchup</button>
+      ${simMode === 'schedule' ? `<button class="btn" onclick="gNextGame()">Next Game →</button>` : ''}
       <button class="btn controls-settings" onclick="gToggleSettings()">⚙ Settings</button>
     </div>
     <div id="g-settings-panel" class="settings-panel" style="display:none">
@@ -189,11 +277,19 @@ function renderGameUI() {
 function gRenderAll() { gRenderSB(); gRenderStatus(); gRenderPlayers(); gRenderLineup(); gRenderPitchers(); }
 
 function gRenderSB() {
+  const cols = G.score[0].length;
+  // Rebuild header if inning count changed (extra innings)
+  const hdr = document.getElementById('g-score-header');
+  if (hdr) {
+    hdr.innerHTML = '<div></div>' +
+      Array.from({ length: cols }, (_, i) => `<div style="text-align:center">${i + 1}</div>`).join('') +
+      '<div class="sR-hdr">R</div><div class="sH-hdr">H</div><div class="sE-hdr">E</div>';
+  }
   [G.away, G.home].forEach((team, si) => {
     const row = document.getElementById(`g-row-${si === 0 ? 'away' : 'home'}`);
     if (!row) return;
     while (row.children.length > 1) row.removeChild(row.lastChild);
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < cols; i++) {
       const c = document.createElement('div'); c.className = 'ic';
       const v = G.score[si][i]; const cur = (G.inning - 1 === i) && (G.half === si);
       if (v !== null) { c.textContent = v; if (v > 0) c.classList.add('hi'); }
@@ -457,6 +553,7 @@ function simPitch() {
     }
   }
   gRenderAll();
+  if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
 
 function doWalk(batter, pitcher, bi, fielding) {
@@ -464,6 +561,7 @@ function doWalk(batter, pitcher, bi, fielding) {
   addLog(gTag(), `${batter.name} draws a walk.`, 't-hit'); showScoreboardMsg('WALK', 1500);
   const rbW = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbW); nextB(bi); G.balls = 0; G.strikes = 0;
   gRenderAll();
+  if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
 
 function checkDec(bi) { if (G.outs >= 3 || G.over || G.decisionsDisabled) return; const opts = buildOpts(bi); if (opts.length > 1) showDec(opts, bi); }
@@ -520,6 +618,7 @@ export function resolveDec(id, bi) {
     case 'hitrun': { const ok = Math.random() < .72; if (ok) { addLog(gTag(), '✅ Hit and run — contact! Runner takes extra base.', 't-hit'); G.hits[G.half]++; const bat = (G.half === 0 ? G.away : G.home).batters[G.lineupIdx[G.half]]; bat.career.h++; bat.career.ab++; advR(2, bi, true); nextB(bi); } else { addLog(gTag(), '❌ Hit and run — miss! Runner caught.', 't-out'); G.bases[0] = false; recOut(bi); } break; }
   }
   gRenderAll();
+  if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
 
 let hpQueue = 0, hpBusy = false;
@@ -542,6 +641,7 @@ function scoreRun(bi) {
   const fldTeam = bi === 0 ? G.home : G.away;
   fldTeam.pitchers[fldTeam.activePitcher].game.er++;
   flashHome();
+  if (!G.over && G.half === 1 && G.inning >= 9 && G.runs[1] > G.runs[0]) G.walkoffPending = true;
 }
 
 function addRunLog(bi, n) {
@@ -579,8 +679,9 @@ function endHalf(bi) {
   else {
     addDelimiter('solid'); addLog(`End B${G.inning}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
     if (G.inning >= 9 && G.runs[0] !== G.runs[1]) { endGame(); return; }
-    if (G.inning >= 12) { endGame(); return; }
     G.inning++; G.half = 0; G.runsStart[0] = G.runs[0];
+    // Extend score arrays for extra innings
+    if (G.inning > G.score[0].length) { G.score[0].push(null); G.score[1].push(null); }
   }
 }
 
@@ -611,6 +712,13 @@ function endGame() {
     else if (homeWon && ti === 0) { p.career.l++; }
   });
 
+  // Mark scheduled game as played
+  if (simMode === 'schedule' && schedGameIdx >= 0 && LEAGUE.schedule) {
+    const sg = LEAGUE.schedule[schedGameIdx];
+    if (sg) { sg.played = true; sg.awayScore = G.runs[0]; sg.homeScore = G.runs[1]; }
+    schedGameIdx = -1;
+  }
+
   saveLeague();
   G.running = false;
 
@@ -623,6 +731,8 @@ function endGame() {
   const gbtn = document.getElementById('g-btn-game');  if (gbtn) gbtn.disabled = true;
 
   // Top hitters overlay on field scoreboard
+  const msgEl = document.getElementById('g-sb-msg');
+  if (msgEl) { clearTimeout(msgT); msgEl.style.display = 'none'; }
   const sbEl = document.getElementById('g-sb-final');
   if (sbEl) {
     const renderBattingHalf = (team) => {

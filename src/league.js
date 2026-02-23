@@ -20,6 +20,7 @@ export function generateLeague() {
     season: 2025,
     teams: [],
     gamesPlayed: 0,
+    savedSchedules: [],
   };
   let teamId = 0;
   for (const [leagueName, divisions] of Object.entries(MLB_STRUCTURE)) {
@@ -191,9 +192,15 @@ export function importFromCSV(text) {
   // Strip BOM and normalize line endings
   const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   const lines = clean.trim().split('\n');
+  if (lines.length < 2) { alert('Import failed: file appears empty or has no data rows.'); return; }
 
-  // Parse a single comma-separated line, respecting quoted fields
+  // Auto-detect delimiter from header row
+  const header = lines[0];
+  const delim = header.includes('\t') ? '\t' : ',';
+
+  // Parse a single delimited line (quote-aware for commas; simple split for tabs)
   const parseLine = line => {
+    if (delim === '\t') return line.split('\t').map(v => v.trim());
     const vals = [];
     let cur = '', inQ = false;
     for (const ch of line) {
@@ -205,36 +212,64 @@ export function importFromCSV(text) {
     return vals;
   };
 
+  // Parse header to get column name → index mapping (case-insensitive, ignoring spaces/underscores)
+  const headerCols = parseLine(header);
+  const norm = s => s.toLowerCase().replace(/[\s_\-\.#]+/g, '');
+  const colIdx = {};
+  headerCols.forEach((h, i) => { colIdx[norm(h)] = i; });
+
+  // Flexible column name lookup: tries multiple aliases
+  const col = (row, ...aliases) => {
+    for (const a of aliases) {
+      const idx = colIdx[norm(a)];
+      if (idx !== undefined && row[idx] !== undefined) return row[idx].trim();
+    }
+    return '';
+  };
+
   // Normalize division names from CSV ("A.L. East" → "AL East")
   const divNorm = {
     'A.L. East':'AL East', 'A.L. Central':'AL Central', 'A.L. West':'AL West',
     'N.L. East':'NL East', 'N.L. Central':'NL Central', 'N.L. West':'NL West',
+    'aleast':'AL East', 'alcentral':'AL Central', 'alwest':'AL West',
+    'nleast':'NL East', 'nlcentral':'NL Central', 'nlwest':'NL West',
   };
 
-  // CSV column layout after removing the photo column (index-based, header row skipped):
-  // 0=league, 1=division, 2=team, 3=num, 4=firstName, 5=lastName,
-  // 6=position, 7=bat, 8=contact, 9=power, 10=patience, 11=speed,
-  // 12=strikeout, 13=gbRate, 14=control, 15=stuff
   const rows = lines.slice(1)
     .map(parseLine)
-    .filter(v => v[2] && v[4] && v[5])
-    .map(v => ({
-      league:    v[0] || '',
-      division:  divNorm[v[1]] || v[1] || '',
-      team:      v[2],
-      num:       v[3],
-      firstName: v[4],
-      lastName:  v[5],
-      position:  v[6],
-      contact:   v[8],
-      power:     v[9],
-      patience:  v[10],
-      speed:     v[11],
-      strikeout: v[12],
-      gbRate:    v[13],
-      control:   v[14],
-      stuff:     v[15],
-    }));
+    .map(v => {
+      const team      = col(v, 'team', 'teamname', 'team name');
+      const firstName = col(v, 'firstname', 'first name', 'first');
+      const lastName  = col(v, 'lastname', 'last name', 'last');
+      if (!team || !firstName || !lastName) return null;
+      // League/division: try header lookup first, fall back to columns A (0) and B (1)
+      const rawLeague = col(v, 'league', 'lg', 'league name') || (v[0] ? v[0].trim() : '');
+      const rawDiv    = col(v, 'division', 'div', 'division name') || (v[1] ? v[1].trim() : '');
+      return {
+        league:    rawLeague,
+        division:  divNorm[rawDiv] || divNorm[norm(rawDiv)] || rawDiv,
+        team,
+        num:       col(v, 'num', 'number', 'player number', 'playernumber', '#', 'jersey'),
+        firstName,
+        lastName,
+        position:  col(v, 'position', 'pos'),
+        contact:   col(v, 'contact'),
+        power:     col(v, 'power'),
+        patience:  col(v, 'patience'),
+        speed:     col(v, 'speed'),
+        strikeout: col(v, 'strikeout', 'k', 'ks'),
+        gbRate:    col(v, 'gbrate', 'gb rate', 'groundball', 'gb'),
+        control:   col(v, 'control'),
+        stuff:     col(v, 'stuff'),
+      };
+    })
+    .filter(Boolean);
+
+  if (rows.length === 0) {
+    alert(`Import failed: no valid player rows found.\n\nExpected columns: Team, First Name, Last Name, Position, and stat ratings.\nDetected delimiter: ${delim === '\t' ? 'tab' : 'comma'}\nHeader columns found: ${headerCols.join(', ')}`);
+    return;
+  }
+
   const teamMap = new Map();
   for (const row of rows) {
     if (!teamMap.has(row.team)) teamMap.set(row.team, { league: row.league, division: row.division, players: [] });
@@ -248,11 +283,12 @@ export function importFromCSV(text) {
     const nickname = parts[parts.length - 1];
     const city = parts.slice(0, -1).join(' ');
 
-    const rawBatters = players.filter(p => p.position !== 'Pitcher');
+    const isPitcher = p => /^(p|sp|rp|lhp|rhp|pitcher)$/i.test(p.position.trim());
+    const rawBatters = players.filter(p => !isPitcher(p));
     const batters = rawBatters.map(mkBatterFromCSV);
     while (batters.length < 9) batters.push(mkBatter(POSITIONS[batters.length % POSITIONS.length]));
 
-    const rawPitchers = players.filter(p => p.position === 'Pitcher');
+    const rawPitchers = players.filter(isPitcher);
     const pitchers = rawPitchers.length > 0 ? rawPitchers.map(mkPitcherFromCSV)
       : [mkPitcher(), mkPitcher(), mkPitcher()];
 
@@ -269,11 +305,37 @@ export function importFromCSV(text) {
   saveLeague();
 }
 
+export function exportLeague() {
+  const json = JSON.stringify(LEAGUE, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${LEAGUE.name.replace(/\s+/g, '_')}_${LEAGUE.season}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function importRosters(input) {
   const file = input.files[0];
   if (!file) return;
+  input.value = ''; // reset so re-selecting the same file fires onchange again
   const reader = new FileReader();
-  reader.onload = e => { importFromCSV(e.target.result); window.nav('home'); };
+  reader.onload = e => {
+    const text = e.target.result;
+    if (file.name.toLowerCase().endsWith('.json')) {
+      try {
+        LEAGUE = JSON.parse(text);
+        saveLeague();
+        window.nav('home');
+      } catch(err) {
+        alert('Invalid league file — could not parse JSON.');
+      }
+    } else {
+      importFromCSV(text);
+      window.nav('home');
+    }
+  };
   reader.readAsText(file);
 }
 
