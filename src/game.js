@@ -758,7 +758,7 @@ function checkFatigueAndSub(team) {
   if (eligible.length === 0)
     eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i));
   if (eligible.length === 0) return;
-  eligible.sort((a,b) => a.p.game.pitches - b.p.game.pitches);
+  eligible.sort((a,b) => (a.p.career.g || 0) - (b.p.career.g || 0));
   const next = eligible[0].i;
   addLog(gTag(), `🔄 ${pitcher.name} lifted (${pitcher.game.pitches} pitches, ${Math.round(getFatigue(pitcher)*100)}% fatigue). ${team.pitchers[next].name} enters.`, 't-manage');
   team.activePitcher = next;
