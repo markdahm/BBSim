@@ -105,7 +105,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 
 /* ── TEAM LOGO ── */
 .team-logo-section { display:flex; flex-direction:column; align-items:flex-start; margin-bottom:24px; padding:16px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
-.team-logo-box { width:80px; height:80px; border:2px solid var(--line); border-radius:4px; display:flex; align-items:center; justify-content:center; background:#fafafa; overflow:hidden; flex-shrink:0; }
+.team-logo-box { width:80px; height:80px; border:2px solid var(--line); border-radius:4px; display:flex; align-items:center; justify-content:center; background:transparent; overflow:hidden; flex-shrink:0; }
 .team-logo-img { width:100%; height:100%; object-fit:contain; }
 .team-logo-emoji { font-size:2.8rem; line-height:1; }
 .logo-text-link { font-family:'IBM Plex Mono',monospace; font-size:0.65rem; color:var(--accent); cursor:pointer; text-decoration:underline; }
@@ -142,12 +142,12 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 
 /* ── BASEBALL CARD ── */
 .card-overlay {
-  position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:200;
+  position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:210;
   display:none; align-items:center; justify-content:center;
   padding:20px;
 }
 .card-overlay.open { display:flex; }
-.card-wrap { position:relative; max-width:800px; width:100%; }
+.card-wrap { position:relative; max-width:1100px; width:100%; }
 .card-close { position:absolute; top:-16px; right:-16px; width:32px; height:32px; background:var(--panel); border:2px solid var(--ink); border-radius:50%; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center; z-index:10; }
 
 .baseball-card {
@@ -273,7 +273,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .scoreboard { background:var(--ink); color:var(--chalk); border-radius:4px; overflow:hidden; }
 .score-header { display:grid; grid-template-columns:200px repeat(9,1fr) 34px 34px 34px; font-family:'IBM Plex Mono',monospace; font-size:0.6rem; letter-spacing:2px; color:var(--muted); padding:8px 14px; border-bottom:1px solid #333; }
 .score-row { display:grid; grid-template-columns:200px repeat(9,1fr) 34px 34px 34px; padding:10px 14px; font-family:'IBM Plex Mono',monospace; font-size:0.82rem; border-bottom:1px solid #222; align-items:center; }
-.score-team-name { font-family:'Oswald',sans-serif; font-size:1rem; font-weight:600; letter-spacing:0.5px; }
+.score-team-name { font-family:'Oswald',sans-serif; font-size:1rem; font-weight:600; letter-spacing:0.5px; display:flex; align-items:center; gap:8px; }
 .score-row:last-child { border-bottom:none; }
 .ic { text-align:center; color:#aaa; }
 .ic.hi { color:var(--dirt); font-weight:500; }
@@ -374,6 +374,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 @keyframes fi { from{opacity:0;}to{opacity:1;} }
 .lr:last-child { border-bottom:none; }
 .lt { font-family:'IBM Plex Mono',monospace; font-size:0.56rem; color:var(--muted); white-space:nowrap; padding-top:2px; min-width:50px; }
+.li { font-family:'Bebas Neue',sans-serif; font-size:0.7rem; font-weight:700; min-width:26px; padding-top:2px; flex-shrink:0; }
 .lx { line-height:1.45; }
 .t-hit{color:var(--green);font-weight:500} .t-out{color:var(--accent)} .t-score{color:var(--gold);font-weight:500} .t-hr{color:#1a6bbf;font-weight:700} .t-k{color:var(--accent);font-weight:500} .t-manage{color:#6a0dad;font-weight:500} .t-info{color:var(--muted)} .t-swing{color:#b85c00;font-weight:500}
 

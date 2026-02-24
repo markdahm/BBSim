@@ -48,7 +48,7 @@ export function generateLeague() {
           w: 0, l: 0,
           runsFor: 0, runsAgainst: 0,
           batters: POSITIONS.map(p => mkBatter(p)),
-          pitchers: [mkPitcher(), mkPitcher(), mkPitcher()],
+          pitchers: [mkPitcher(), mkPitcher(), mkPitcher()].map((p, i) => { p.pos = i === 0 ? 'SP' : i === 1 ? 'RP' : 'CL'; return p; }),
           activePitcher: 0,
           seasonLog: [],
         });
@@ -99,7 +99,7 @@ export function mkBatter(pos) {
     goPct:     cl(MLB.go + (a.goD || 0) + rand(-.02, .02), .12, .30),
     foPct:     cl(MLB.fo                + rand(-.02, .02), .10, .25),
     sbRate: rand(.02, .15), sbPct: rand(.62, .85),
-    career: { pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 },
+    career: { g:0, pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 },
     seasons: [],
   };
 }
@@ -108,14 +108,14 @@ export function mkPitcher() {
   const a = P_ARCHS[ri(P_ARCHS.length)];
   return {
     id: Math.random().toString(36).slice(2),
-    name: rn(), pos: 'P', arch: a.l, type: 'pitcher',
+    name: rn(), pos: 'SP', arch: a.l, type: 'pitcher',
     num: ri(99) + 1,
     emoji: EMOJIS[ri(EMOJIS.length)],
     era:   cl(3.85 + a.eraD + rand(-.5, .5), 2.20, 6.00),
     kPct:  cl(MLB.k    + a.kD  + rand(-.02, .02), .14, .35),
     bbPct: cl(MLB.walk + a.bbD + rand(-.01, .02), .04, .14),
     goD: a.goD || 0,
-    career: { g:0, ip:0, h:0, er:0, bb:0, k:0, w:0, l:0, sv:0 },
+    career: { g:0, gs:0, cg:0, sho:0, ip:0, h:0, r:0, er:0, bb:0, k:0, w:0, l:0, sv:0, svo:0, hr:0, hbp:0, bf:0 },
     seasons: [],
   };
 }
@@ -152,7 +152,7 @@ function mkBatterFromCSV(row) {
     emoji: EMOJIS[ri(EMOJIS.length)],
     avg, kPct, bbPct, hrPct, singlePct, doublePct, triplePct, goPct, foPct,
     sbRate, sbPct: rand(.62, .85),
-    career: { pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 },
+    career: { g:0, pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 },
     seasons: [],
   };
 }
@@ -174,11 +174,12 @@ function mkPitcherFromCSV(row) {
   return {
     id: Math.random().toString(36).slice(2),
     name: `${row.firstName} ${row.lastName}`,
-    pos: 'P', arch, type: 'pitcher',
+    pos: /^(sp)$/i.test((row.position||'').trim()) ? 'SP' : /^(rp|lhp|rhp)$/i.test((row.position||'').trim()) ? 'RP' : 'SP',
+    arch, type: 'pitcher',
     num: parseInt(row.num) || ri(99) + 1,
     emoji: EMOJIS[ri(EMOJIS.length)],
     era, kPct, bbPct, goD,
-    career: { g:0, ip:0, h:0, er:0, bb:0, k:0, w:0, l:0, sv:0 },
+    career: { g:0, gs:0, cg:0, sho:0, ip:0, h:0, r:0, er:0, bb:0, k:0, w:0, l:0, sv:0, svo:0, hr:0, hbp:0, bf:0 },
     seasons: [],
   };
 }

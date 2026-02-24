@@ -16,7 +16,7 @@ let awayTeamId = null;
 let pitchDelay = 0;
 let homeTeamId = null;
 let gLineupView = 0;
-let simMode = 'expo';        // 'expo' | 'schedule'
+let simMode = 'schedule';    // 'expo' | 'schedule'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 
 // ====================================================================
@@ -48,23 +48,27 @@ export function renderSimulate() {
 
     if (simMode === 'expo') {
       const opts = LEAGUE.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+      const logoFor = id => { const t = LEAGUE.teams.find(t => t.id === parseInt(id)); return t ? teamLogoHtml(t, 32) : ''; };
       cont.innerHTML = `
         <div class="matchup-picker">
           <div class="section-title">New Game</div>
           ${modeBar}
           <div class="mp-row">
             <div class="mp-label">Away</div>
-            <select class="mp-select" id="sel-away">${opts}</select>
+            <span id="logo-away">${teamLogoHtml(LEAGUE.teams[0], 32)}</span>
+            <select class="mp-select" id="sel-away" onchange="document.getElementById('logo-away').innerHTML=window._mpLogoFor(this.value)">${opts}</select>
           </div>
           <div class="mp-row">
             <div class="mp-label">Home</div>
-            <select class="mp-select" id="sel-home">${opts}</select>
+            <span id="logo-home">${teamLogoHtml(LEAGUE.teams[1] || LEAGUE.teams[0], 32)}</span>
+            <select class="mp-select" id="sel-home" onchange="document.getElementById('logo-home').innerHTML=window._mpLogoFor(this.value)">${opts}</select>
           </div>
           <div style="margin-top:8px">
             <button class="btn primary" onclick="startGame()">Play Ball!</button>
           </div>
         </div>${statsPanel}`;
-      if (LEAGUE.teams.length >= 2) document.getElementById('sel-home').selectedIndex = 1;
+      window._mpLogoFor = logoFor;
+      if (LEAGUE.teams.length >= 2) { document.getElementById('sel-home').selectedIndex = 1; document.getElementById('logo-home').innerHTML = logoFor(LEAGUE.teams[1].id); }
 
     } else {
       // Schedule mode
@@ -85,9 +89,9 @@ export function renderSimulate() {
             Game ${played + 1} of ${sched.length}
           </div>
           <div class="sched-next-game">
-            <span class="sng-team">${away.emoji} ${away.name}</span>
+            <span class="sng-team">${teamLogoHtml(away, 32)} ${away.name}</span>
             <span class="sng-at">@</span>
-            <span class="sng-team">${home.emoji} ${home.name}</span>
+            <span class="sng-team">${teamLogoHtml(home, 32)} ${home.name}</span>
           </div>
           <div style="margin-top:14px">
             <button class="btn primary" onclick="startScheduleGame()">Play Ball!</button>
@@ -137,10 +141,11 @@ export function startGame(awayIdArg, homeIdArg) {
     lineupIdx:[0,0], over:false, walkoffPending:false,
     boxBatters:[{},{}], boxPitchers:[{},{}],
     eventFeed:[],
+    scoringLog:[],  // {bi, away, home, awayPitcherIdx, homePitcherIdx} per run scored
   };
   away.activePitcher = away.startingPitcherIdx ?? 0;
   home.activePitcher = home.startingPitcherIdx ?? 0;
-  [away, home].forEach(team => team.pitchers.forEach(p => { p.game = { strikes:0, balls:0, hits:0, bb:0, er:0, outs:0, k:0, pitches:0 }; }));
+  [away, home].forEach(team => team.pitchers.forEach(p => { p.game = { strikes:0, balls:0, hits:0, bb:0, er:0, r:0, outs:0, k:0, pitches:0, hr:0, hbp:0, bf:0, entryScore:{away:0,home:0} }; }));
   [away, home].forEach(team => team.batters.forEach(b => { b.game = { ab:0, h:0, rbi:0, hr:0 }; }));
 
   renderGameUI();
@@ -198,8 +203,8 @@ function renderGameUI() {
         <div style="text-align:center">7</div><div style="text-align:center">8</div><div style="text-align:center">9</div>
         <div class="sR-hdr">R</div><div class="sH-hdr">H</div><div class="sE-hdr">E</div>
       </div>
-      <div class="score-row" id="g-row-away"><div class="score-team-name">${teamLogoHtml(away, 20)} ${away.name}</div></div>
-      <div class="score-row" id="g-row-home"><div class="score-team-name">${teamLogoHtml(home, 20)} ${home.name}</div></div>
+      <div class="score-row" id="g-row-away"><div class="score-team-name">${teamLogoHtml(away, 28)} ${away.name}</div></div>
+      <div class="score-row" id="g-row-home"><div class="score-team-name">${teamLogoHtml(home, 28)} ${home.name}</div></div>
     </div>
 
     <div class="runners-bar">
@@ -235,13 +240,12 @@ function renderGameUI() {
       <button class="btn" id="g-btn-auto" onclick="gAuto()">Auto-Play Half Inning</button>
       <button class="btn" id="g-btn-game" onclick="gAutoGame()">Auto-Play Game</button>
       <button class="btn" onclick="gNextGame()">Next Game →</button>
-      <button class="btn controls-settings" onclick="gToggleSettings()">⚙ Settings</button>
-    </div>
-    <div id="g-settings-panel" class="settings-panel" style="display:none">
-      <div class="settings-row">
-        <span class="settings-label">Delay Speed</span>
-        <input type="range" min="0" max="3000" step="300" value="${pitchDelay}" oninput="gSetDelay(this.value)" class="speed-slider">
-        <span id="g-delay-val" class="settings-val">${pitchDelay}ms</span>
+      <div style="display:flex;align-items:center;gap:7px;margin-left:auto">
+        <span class="settings-label" style="white-space:nowrap">Delay</span>
+        <div class="rating-bar-bg" style="width:110px;flex:none;cursor:pointer" onclick="gSetDelay(Math.round(event.offsetX/this.offsetWidth*10)*100)">
+          <div class="rating-bar-fill" id="g-delay-bar" style="width:${pitchDelay/10}%;transition:none"></div>
+        </div>
+        <span id="g-delay-val" class="settings-val">${pitchDelay ? pitchDelay + 'ms' : 'off'}</span>
       </div>
     </div>
 
@@ -285,7 +289,7 @@ function gRenderAll() { gRenderSB(); gRenderStatus(); gRenderPlayers(); gRenderL
 function gRenderFeed() {
   const el = document.getElementById('g-sb-feed');
   if (!el) return;
-  const iconColor = { '1B':'#7ecf7e', '2B':'#7ecf7e', '3B':'#7ecf7e', 'HR':'#4ab3ff', 'BB':'#ffcc00', 'HBP':'#ffcc00', 'SF':'#ffcc00', 'R':'#4ab3ff', 'K':'#cc1111', 'GO':'#cc1111', 'FO':'#cc1111', 'LO':'#cc1111', 'DP':'#cc1111' };
+  const iconColor = { '1B':'#7ecf7e', '2B':'#7ecf7e', '3B':'#7ecf7e', 'HR':'#4ab3ff', 'BB':'#ffcc00', 'HBP':'#ffcc00', 'SF':'#ffcc00', 'R':'#4ab3ff', 'K':'#cc1111', 'GO':'#cc1111', 'FO':'#cc1111', 'LO':'#cc1111', 'DP':'#cc1111', 'E':'#ff8c00' };
   el.innerHTML = (G.eventFeed || []).map(e => e.summary
     ? `<div class="sb-feed-row sb-feed-summary"><span class="sb-feed-icon" style="color:#ffcc00">${e.icon}</span><span class="sb-feed-label" style="color:#ffcc00">${e.label}</span></div>`
     : `<div class="sb-feed-row"><span class="sb-feed-icon" style="color:${iconColor[e.icon]||'#fff'}">${e.icon}</span><span class="sb-feed-label">${e.label}</span></div>`
@@ -303,9 +307,11 @@ function gRenderInning() {
 
 function gRenderSB() {
   const cols = G.score[0].length;
+  const colTemplate = `200px repeat(${cols},1fr) 34px 34px 34px`;
   // Rebuild header if inning count changed (extra innings)
   const hdr = document.getElementById('g-score-header');
   if (hdr) {
+    hdr.style.gridTemplateColumns = colTemplate;
     hdr.innerHTML = '<div></div>' +
       Array.from({ length: cols }, (_, i) => `<div style="text-align:center">${i + 1}</div>`).join('') +
       '<div class="sR-hdr">R</div><div class="sH-hdr">H</div><div class="sE-hdr">E</div>';
@@ -313,6 +319,7 @@ function gRenderSB() {
   [G.away, G.home].forEach((team, si) => {
     const row = document.getElementById(`g-row-${si === 0 ? 'away' : 'home'}`);
     if (!row) return;
+    row.style.gridTemplateColumns = colTemplate;
     while (row.children.length > 1) row.removeChild(row.lastChild);
     for (let i = 0; i < cols; i++) {
       const c = document.createElement('div'); c.className = 'ic';
@@ -389,7 +396,7 @@ function gRenderPitchers() {
     const row = document.createElement('div');
     row.className = 'pi-row' + (i === team.activePitcher ? ' active' : '');
     row.innerHTML = `<div style="flex:1"><div class="pi-nm">${p.name}</div><div class="pi-st">${p.arch} · ERA ${era}</div></div>${i === team.activePitcher ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:0.6rem">▶</span>' : ''}`;
-    row.onclick = () => { team.activePitcher = i; addLog(gTag(), `Manager brings in ${p.name}.`, 't-manage'); gRenderAll(); };
+    row.onclick = () => { team.activePitcher = i; team.pitchers[i].game.entryScore = { away: G.runs[0], home: G.runs[1] }; addLog(gTag(), `Manager brings in ${p.name}.`, 't-manage'); gRenderAll(); };
     list.appendChild(row);
   });
 }
@@ -461,8 +468,8 @@ function simPitch() {
     if (G.strikes >= 3) {
       G.balls = 0; G.strikes = 0;
       batter.career.pa = (batter.career.pa || 0) + 1; batter.game.ab++;
-      pitcher.career.k++; batter.career.k++; pitcher.game.k++;
-      addLog(gTag(), `Called strike 3. ${batter.name} struck out looking! ⚡`, 't-k');
+      pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
+      addLog(gTag(), `Called strike 3. ${batter.name} struck out looking! ⚡`, 't-k', 'K');
       showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
       nextB(bi); recOut(bi); gRenderAll(); return;
     }
@@ -474,8 +481,8 @@ function simPitch() {
     if (G.strikes >= 3) {
       G.balls = 0; G.strikes = 0;
       batter.career.pa = (batter.career.pa || 0) + 1; batter.game.ab++;
-      pitcher.career.k++; batter.career.k++; pitcher.game.k++;
-      addLog(gTag(), `Swings through strike 3. ${batter.name} struck out swinging! ⚡`, 't-k');
+      pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
+      addLog(gTag(), `Swings through strike 3. ${batter.name} struck out swinging! ⚡`, 't-k', 'K');
       showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
       nextB(bi); recOut(bi); gRenderAll(); return;
     }
@@ -496,8 +503,8 @@ function simPitch() {
     if (G.strikes >= 3) {
       G.balls = 0; G.strikes = 0;
       batter.career.pa = (batter.career.pa || 0) + 1; batter.game.ab++;
-      pitcher.career.k++; batter.career.k++; pitcher.game.k++;
-      addLog(gTag(), `${batter.name} strikes out. ⚡`, 't-k');
+      pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
+      addLog(gTag(), `${batter.name} strikes out. ⚡`, 't-k', 'K');
       showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
       nextB(bi); recOut(bi); gRenderAll(); return;
     }
@@ -507,30 +514,55 @@ function simPitch() {
 
   G.balls = 0; G.strikes = 0;
 
-  // Update batter PA
+  // Update batter PA and pitcher BF
   batter.career.pa = (batter.career.pa || 0) + 1;
+  pitcher.game.bf++;
 
   switch (outcome) {
     case 'go': {
       batter.career.ab++; batter.game.ab++; pitcher.game.strikes++;
-      if (G.bases[0] && G.outs < 2 && Math.random() < .28) { addLog(gTag(), `${batter.name} hits into a double play!`, 't-out'); showScoreboardMsg('DOUBLE PLAY!', 1800); pushFeed('DP', batter.name); G.bases[0] = false; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); }
-      else { const t = ['grounds to short','grounds out to second','bounces to third']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out'); showScoreboardMsg('GROUND OUT', 1200); pushFeed('GO', batter.name); nextB(bi); recOut(bi); }
+      if (Math.random() < 0.07) {
+        const fi = 1 - bi;  G.errors[fi]++;
+        const eT = [['E4','second baseman boots it'],['E6','shortstop throws wild'],['E5','third baseman bobbles'],['E3','first base drops the throw']];
+        const [eCode, eDesc] = eT[ri(eT.length)];
+        addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
+        const rbE = G.runs[bi]; advR(1, bi, true); addRunLog(bi, G.runs[bi] - rbE); nextB(bi); break;
+      }
+      if (G.bases[0] && G.outs < 2 && Math.random() < .28) { addLog(gTag(), `${batter.name} hits into a double play!`, 't-out', 'DP'); showScoreboardMsg('DOUBLE PLAY!', 1800); pushFeed('DP', batter.name); G.bases[0] = false; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); }
+      else { const t = ['grounds to short','grounds out to second','bounces to third']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'GO'); showScoreboardMsg('GROUND OUT', 1200); pushFeed('GO', batter.name); nextB(bi); recOut(bi); }
       break;
     }
     case 'fo': {
       batter.career.ab++; batter.game.ab++; pitcher.game.strikes++;
-      const t = ['flies out to center','pops to right','lofts one to left — caught']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out');
-      if (G.bases[2] && G.outs < 2 && Math.random() < .72) { G.bases[2] = false; scoreRun(bi); addRunLog(bi, 1); batter.game.rbi++; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name); } else { showScoreboardMsg('FLY OUT', 1200); pushFeed('FO', batter.name); }
+      if (Math.random() < 0.04) {
+        const fi = 1 - bi; G.errors[fi]++;
+        const eT = [['E7','left fielder drops it'],['E8','center fielder misjudges it'],['E9','right fielder muffs the catch']];
+        const [eCode, eDesc] = eT[ri(eT.length)];
+        addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
+        const rbE = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbE); nextB(bi); break;
+      }
+      const foT = ['flies out to center','pops to right','lofts one to left — caught'];
+      const isSF = G.bases[2] && G.outs < 2 && Math.random() < .72;
+      addLog(gTag(), `${batter.name} ${foT[ri(foT.length)]}.`, 't-out', isSF ? 'SF' : 'FO');
+      if (isSF) { G.bases[2] = false; scoreRun(bi); addRunLog(bi, 1); batter.game.rbi++; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name); }
+      else { showScoreboardMsg('FLY OUT', 1200); pushFeed('FO', batter.name); }
       nextB(bi); recOut(bi); break;
     }
     case 'lo': {
       batter.career.ab++; batter.game.ab++; pitcher.game.strikes++;
-      const t = ['lines out to short','ropes one to second — OUT','lasers one to center — caught!']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out'); showScoreboardMsg('LINE OUT', 1200); pushFeed('LO', batter.name); nextB(bi); recOut(bi); break;
+      if (Math.random() < 0.05) {
+        const fi = 1 - bi; G.errors[fi]++;
+        const eT = [['E4','second baseman can\'t handle it'],['E6','shortstop drops the liner'],['E5','third baseman juggles it']];
+        const [eCode, eDesc] = eT[ri(eT.length)];
+        addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
+        const rbE = G.runs[bi]; advR(1, bi, true); addRunLog(bi, G.runs[bi] - rbE); nextB(bi); break;
+      }
+      const t = ['lines out to short','ropes one to second — OUT','lasers one to center — caught!']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'LO'); showScoreboardMsg('LINE OUT', 1200); pushFeed('LO', batter.name); nextB(bi); recOut(bi); break;
     }
-    case 'hbp': { batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.balls++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbH); nextB(bi); break; }
+    case 'hbp': { batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.balls++; pitcher.career.hbp++; pitcher.game.hbp++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit', 'HBP'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbH); nextB(bi); break; }
     case 'single': {
       G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.pa++; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++;
-      addLog(gTag(), `${batter.name} singles!`, 't-hit'); showScoreboardMsg('SINGLE!', 1500); pushFeed('1B', batter.name);
+      addLog(gTag(), `${batter.name} singles!`, 't-hit', '1B'); showScoreboardMsg('SINGLE!', 1500); pushFeed('1B', batter.name);
       // 2 outs + runner on 2nd: scoring chance depends on runner speed
       if (G.outs === 2 && G.bases[1]) {
         // Approximate runner identity: player 2 lineup spots ahead of current batter
@@ -554,7 +586,7 @@ function simPitch() {
     }
     case 'dbl': {
       G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.doubles = (batter.career.doubles || 0) + 1; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++;
-      addLog(gTag(), `${batter.name} doubles!`, 't-hit'); showScoreboardMsg('DOUBLE!!', 1800); pushFeed('2B', batter.name);
+      addLog(gTag(), `${batter.name} doubles!`, 't-hit', '2B'); showScoreboardMsg('DOUBLE!!', 1800); pushFeed('2B', batter.name);
       // Runner on 1st: speed-based scoring chance (2 outs = runners go on contact)
       if (G.bases[0]) {
         const runnerApprox = batting.batters[(G.lineupIdx[bi] + 8) % 9]; // 1 spot back in lineup
@@ -577,11 +609,11 @@ function simPitch() {
       }
       nextB(bi); break;
     }
-    case 'triple': { G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.triples = (batter.career.triples || 0) + 1; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++; addLog(gTag(), `${batter.name} TRIPLES!`, 't-hit'); showScoreboardMsg('TRIPLE!!!', 2200); pushFeed('3B', batter.name); const rb3 = G.runs[bi]; advR(3, bi, true); addRunLog(bi, G.runs[bi] - rb3); batter.game.rbi += G.runs[bi] - rb3; nextB(bi); break; }
+    case 'triple': { G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.triples = (batter.career.triples || 0) + 1; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++; addLog(gTag(), `${batter.name} TRIPLES!`, 't-hit', '3B'); showScoreboardMsg('TRIPLE!!!', 2200); pushFeed('3B', batter.name); const rb3 = G.runs[bi]; advR(3, bi, true); addRunLog(bi, G.runs[bi] - rb3); batter.game.rbi += G.runs[bi] - rb3; nextB(bi); break; }
     case 'hr': {
-      G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.hr++; batter.game.ab++; batter.game.h++; batter.game.hr++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++;
+      G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.hr++; batter.game.ab++; batter.game.h++; batter.game.hr++; pitcher.game.hits++; pitcher.career.h++; pitcher.career.hr++; pitcher.game.hr++; pitcher.game.strikes++;
       const ob = G.bases.filter(Boolean).length;
-      addLog(gTag(), `${batter.name} HOMERS! ${ob+1} run${ob+1 > 1 ? 's' : ''} score! 💥`, 't-hr'); showScoreboardMsg('HOME RUN!!', 1800, '#cc1111'); pushFeed('HR', batter.name);
+      addLog(gTag(), `${batter.name} HOMERS! ${ob+1} run${ob+1 > 1 ? 's' : ''} score! 💥`, 't-hr', 'HR'); showScoreboardMsg('HOME RUN!!', 1800, '#cc1111'); pushFeed('HR', batter.name);
       G.bases = [false,false,false];
       for (let r = 0; r <= ob; r++) { scoreRun(bi); batter.career.rbi = (batter.career.rbi || 0) + 1; }
       batter.game.rbi += ob + 1;
@@ -593,8 +625,8 @@ function simPitch() {
 }
 
 function doWalk(batter, pitcher, bi, fielding) {
-  pitcher.career.bb++; batter.career.bb++; batter.career.pa++; pitcher.game.bb++;
-  addLog(gTag(), `${batter.name} draws a walk.`, 't-hit'); showScoreboardMsg('WALK', 1500); pushFeed('BB', batter.name);
+  pitcher.career.bb++; batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.bf++;
+  addLog(gTag(), `${batter.name} draws a walk.`, 't-hit', 'BB'); showScoreboardMsg('WALK', 1500); pushFeed('BB', batter.name);
   const rbW = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbW); nextB(bi); G.balls = 0; G.strikes = 0;
   gRenderAll();
   if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
@@ -671,15 +703,18 @@ function flashHome() {
     const hp = document.getElementById('g-bh');
     if (!hp) { hpBusy = false; return; }
     hp.classList.add('on');
-    setTimeout(() => { hp.classList.remove('on'); setTimeout(step, 180); }, 500);
+    setTimeout(() => { hp.classList.remove('on'); setTimeout(step, 18); }, 50);
   };
   step();
 }
 
 function scoreRun(bi) {
   G.runs[bi]++;
+  G.scoringLog.push({ bi, away: G.runs[0], home: G.runs[1], awayPitcherIdx: G.away.activePitcher, homePitcherIdx: G.home.activePitcher });
   const fldTeam = bi === 0 ? G.home : G.away;
-  fldTeam.pitchers[fldTeam.activePitcher].game.er++;
+  const curP = fldTeam.pitchers[fldTeam.activePitcher];
+  curP.game.er++;
+  curP.game.r++;
   flashHome();
   if (!G.over && G.half === 1 && G.inning >= 9 && G.runs[1] > G.runs[0]) G.walkoffPending = true;
 }
@@ -687,7 +722,7 @@ function scoreRun(bi) {
 function addRunLog(bi, n) {
   if (n <= 0) return;
   const s = n === 1 ? '1 run scores' : `${n} runs score`;
-  addLog(gTag(), `${s}. ${G.away.name} ${G.runs[0]}–${G.runs[1]} ${G.home.name}.`, 't-score');
+  addLog(gTag(), `${s}. ${G.away.name} ${G.runs[0]}–${G.runs[1]} ${G.home.name}.`, 't-score', 'R');
   const team = bi === 0 ? G.away : G.home;
   const score = `${G.runs[0]}–${G.runs[1]}`;
   pushFeed('R', `${team.name.split(' ').slice(-1)[0]} · ${score}`);
@@ -713,11 +748,21 @@ function recOut(bi) {
 function checkFatigueAndSub(team) {
   const pitcher = team.pitchers[team.activePitcher];
   if (!pitcher || getFatigue(pitcher) <= 0.80) return;
-  // Find first fresh reliever (non-SP with 0 pitches), then any unused reliever
-  const next = team.pitchers.findIndex((p, i) => i !== team.activePitcher && p.pos !== 'SP' && p.game.pitches === 0);
-  if (next === -1) return; // no reliever available
+  const avail = (p, i) => i !== team.activePitcher && getFatigue(p) < 1;
+  // 1. Prefer RP
+  let eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i) && p.pos==='RP');
+  // 2. Any non-SP, non-CL reliever
+  if (eligible.length === 0)
+    eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i) && p.pos!=='SP' && p.pos!=='CL' && p.pos!=='P');
+  // 3. Last resort — anyone available (including CL)
+  if (eligible.length === 0)
+    eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i));
+  if (eligible.length === 0) return;
+  eligible.sort((a,b) => a.p.game.pitches - b.p.game.pitches);
+  const next = eligible[0].i;
   addLog(gTag(), `🔄 ${pitcher.name} lifted (${pitcher.game.pitches} pitches, ${Math.round(getFatigue(pitcher)*100)}% fatigue). ${team.pitchers[next].name} enters.`, 't-manage');
   team.activePitcher = next;
+  team.pitchers[next].game.entryScore = { away: G.runs[0], home: G.runs[1] };
 }
 
 function endHalf(bi) {
@@ -727,13 +772,13 @@ function endHalf(bi) {
   G.eventFeed.unshift({ icon: String(ir), label: ir === 1 ? 'run scored' : 'runs scored', summary: true });
   gRenderFeed();
   if (bi === 0) {
-    addDelimiter('dotted'); addLog(`End T${G.inning}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
+    addDelimiter('dotted'); addLog(`End ${gOrd(G.inning)}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
     if (G.inning >= 9 && G.runs[1] > G.runs[0]) { endGame(); return; }
     G.half = 1; G.runsStart[1] = G.runs[1];
     if (G.inning >= 6) checkFatigueAndSub(G.away);
   }
   else {
-    addDelimiter('solid'); addLog(`End B${G.inning}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
+    addDelimiter('solid'); addLog(`End ${gOrd(G.inning)}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
     if (G.inning >= 9 && G.runs[0] !== G.runs[1]) { endGame(); return; }
     G.inning++; G.half = 0; G.runsStart[0] = G.runs[0];
     if (G.inning > G.score[0].length) { G.score[0].push(null); G.score[1].push(null); }
@@ -755,17 +800,84 @@ function endGame() {
   G.home.runsAgainst  = (G.home.runsAgainst || 0) + G.runs[0];
   LEAGUE.gamesPlayed++;
 
-  // Archive pitcher stats (active pitchers)
+  // Determine pitcher decisions MLB-style (W / L / SV)
+  let winP = null, lossP = null, saveP = null;
+  if (awayWon || homeWon) {
+    const [winTi, loseTi] = awayWon ? [0, 1] : [1, 0];
+    const [winTeam, loseTeam] = awayWon ? [G.away, G.home] : [G.home, G.away];
+
+    // Walk scoring log to find the last time the winning team took the lead
+    // from a non-leading position (the decisive run)
+    let decisiveIdx = -1, prevWinLeading = false;
+    for (let i = 0; i < G.scoringLog.length; i++) {
+      const e = G.scoringLog[i];
+      const wLeading = winTi === 0 ? e.away > e.home : e.home > e.away;
+      if (wLeading && !prevWinLeading) decisiveIdx = i;
+      prevWinLeading = wLeading;
+    }
+    if (decisiveIdx === -1 && G.scoringLog.length > 0) decisiveIdx = 0;
+    const dec = G.scoringLog[decisiveIdx];
+
+    // Losing pitcher: pitching for losing team when winner scored the decisive run
+    if (dec && dec.bi === winTi) {
+      const lpIdx = loseTi === 0 ? dec.awayPitcherIdx : dec.homePitcherIdx;
+      lossP = loseTeam.pitchers[lpIdx];
+    }
+    if (!lossP) lossP = loseTeam.pitchers[loseTeam.activePitcher];
+
+    // Winning pitcher: pitching for winning team at the decisive moment
+    let wpCandidate = null;
+    if (dec) {
+      const wpIdx = winTi === 0 ? dec.awayPitcherIdx : dec.homePitcherIdx;
+      wpCandidate = winTeam.pitchers[wpIdx];
+    }
+    if (!wpCandidate) wpCandidate = winTeam.pitchers[winTeam.activePitcher];
+
+    // Starter qualification: must have pitched ≥ 5 innings (≥ 15 outs) to earn a W
+    const winPitched = winTeam.pitchers.filter(p => p.game && p.game.pitches > 0);
+    if (winPitched.length > 1 && wpCandidate === winPitched[0] && winPitched[0].game.outs < 15) {
+      wpCandidate = winPitched[1]; // starter didn't qualify — W goes to first reliever
+    }
+    winP = wpCandidate;
+
+    // Save: last pitcher on winning team, not the WP, entered with a lead of 1–3 runs
+    const lastWinP = winTeam.pitchers[winTeam.activePitcher];
+    if (lastWinP !== winP && lastWinP.game && lastWinP.game.pitches > 0) {
+      const es = lastWinP.game.entryScore || { away: 0, home: 0 };
+      const wEntry = winTi === 0 ? es.away : es.home;
+      const lEntry = winTi === 0 ? es.home : es.away;
+      const entryLead = wEntry - lEntry;
+      if (entryLead >= 1 && entryLead <= 3) saveP = lastWinP;
+    }
+  }
+
+  // Archive pitcher stats for every pitcher who appeared
   [G.away, G.home].forEach((team, ti) => {
-    const p = team.pitchers[team.activePitcher];
-    const ipThisGame = G.inning - (G.half === ti ? 0 : 1) + (ti === 1 && G.half === 1 ? 0 : 0);
-    p.career.ip += Math.max(1, ipThisGame);
-    p.career.g++;
-    p.career.er += Math.round(G.runs[1 - ti] * 0.85);
-    if (awayWon && ti === 0)      { p.career.w++; }
-    else if (homeWon && ti === 1) { p.career.w++; }
-    else if (awayWon && ti === 1) { p.career.l++; }
-    else if (homeWon && ti === 0) { p.career.l++; }
+    const pitched = team.pitchers.filter(p => p.game && p.game.pitches > 0);
+    if (pitched.length === 0) return;
+    const teamWon = (ti === 0 && awayWon) || (ti === 1 && homeWon);
+    pitched.forEach((p, pi) => {
+      const gs = p.game;
+      p.career.g++;
+      if (pi === 0) p.career.gs = (p.career.gs || 0) + 1;
+      p.career.ip += gs.outs / 3;
+      p.career.er += gs.er;
+      p.career.r   = (p.career.r   || 0) + (gs.r   || 0);
+      p.career.bf  = (p.career.bf  || 0) + (gs.bf  || 0);
+      if (p === winP)  p.career.w++;
+      if (p === lossP) p.career.l++;
+      if (p === saveP) { p.career.sv = (p.career.sv || 0) + 1; p.career.svo = (p.career.svo || 0) + 1; }
+    });
+    // Complete game / shutout for the sole starter
+    if (pitched.length === 1) {
+      pitched[0].career.cg = (pitched[0].career.cg || 0) + 1;
+      if (G.runs[1 - ti] === 0 && teamWon) pitched[0].career.sho = (pitched[0].career.sho || 0) + 1;
+    }
+  });
+
+  // Games played for lineup batters
+  [G.away, G.home].forEach(team => {
+    team.batters.slice(0, 9).forEach(b => { b.career.g = (b.career.g || 0) + 1; });
   });
 
   // Advance starting rotation for next game
@@ -832,8 +944,7 @@ function endGame() {
         const ipStr = `${Math.floor(ip)}.${gs.outs % 3}`;
         const whip = ip > 0 ? ((gs.bb + gs.hits) / ip).toFixed(2) : '—';
         const era  = ip > 0 ? ((gs.er * 9) / ip).toFixed(2) : '—';
-        const isActive = p === team.pitchers[team.activePitcher];
-        const dec = !hasDec ? '' : isActive && isWinner ? ' (WP)' : isActive && !isWinner ? ' (LP)' : '';
+        const dec = !hasDec ? '' : p === winP ? ' (W)' : p === lossP ? ' (L)' : p === saveP ? ' (SV)' : '';
         if (isStarter) {
           const pitches = gs.strikes + gs.balls;
           const pitchStr = `${pitches} (${gs.strikes}-${gs.balls})`;
@@ -910,15 +1021,13 @@ export function gAutoGame() {
   step();
 }
 
-export function gToggleSettings() {
-  const panel = document.getElementById('g-settings-panel');
-  if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-}
 
 export function gSetDelay(v) {
   pitchDelay = parseInt(v);
+  const bar = document.getElementById('g-delay-bar');
+  if (bar) bar.style.width = (pitchDelay / 10) + '%';
   const el = document.getElementById('g-delay-val');
-  if (el) el.textContent = v + 'ms';
+  if (el) el.textContent = pitchDelay ? pitchDelay + 'ms' : 'off';
 }
 
 // ── Helpers ──
@@ -928,8 +1037,9 @@ function pushFeed(icon, label) {
 }
 
 function getFatigue(pitcher) {
-  const rate = pitcher.pos === 'SP' ? 100 : 50;
-  return Math.min(1, (pitcher.game?.pitches || 0) / rate);
+  const pitches = pitcher.game?.pitches || 0;
+  if (pitcher.pos === 'SP' || pitcher.pos === 'P') return Math.min(1, pitches * 4 / 550); // ~3.6% per 5 pitches → auto-sub at ~110 pitches
+  return Math.min(1, pitches / 50);
 }
 
 function calcProbs(b, p) {
@@ -937,7 +1047,7 @@ function calcProbs(b, p) {
   const k  = cl(b.kPct * .6  + p.kPct  * (1 - fatigue * 0.4) * .4, .10, .38);
   const bb = cl(b.bbPct * .6 + p.bbPct * (1 + fatigue * 0.6) * .4, .04, .18);
   const go = cl(b.goPct + (p.goD || 0) * (1 - fatigue * 0.5) * .4, .12, .32);
-  const raw = { k, go, fo:b.foPct, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single:b.singlePct, dbl:b.doublePct, triple:b.triplePct, hr:b.hrPct };
+  const raw = { k, go, fo:b.foPct, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single:b.singlePct * 0.75, dbl:b.doublePct * 0.75, triple:b.triplePct * 0.75, hr:b.hrPct * 0.75 };
   const tot = Object.values(raw).reduce((s, v) => s + v, 0);
   const out = {}; for (const key in raw) out[key] = raw[key] / tot; return out;
 }
@@ -946,10 +1056,13 @@ function rollO(probs) { let r = Math.random(), cum = 0; for (const [k, p] of Obj
 function gTag()  { return `${G.half === 0 ? 'T' : 'B'}${G.inning}`; }
 function gOrd(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : n + 'th'; }
 
-function addLog(t, txt, cls) {
+const LOG_ICON_COLOR = { '1B':'#7ecf7e','2B':'#7ecf7e','3B':'#7ecf7e','HR':'#4ab3ff','BB':'#ffcc00','HBP':'#ffcc00','SF':'#ffcc00','R':'#4ab3ff','K':'#cc1111','GO':'#cc1111','FO':'#cc1111','LO':'#cc1111','DP':'#cc1111','E':'#ff8c00' };
+
+function addLog(t, txt, cls, icon = '') {
   const l = document.getElementById('g-log'); if (!l) return;
   const e = document.createElement('div'); e.className = 'lr';
-  e.innerHTML = `<span class="lt">${t}</span><span class="lx ${cls}">${txt}</span>`;
+  const iHtml = icon ? `<span class="li" style="color:${LOG_ICON_COLOR[icon]||'#aaa'}">${icon}</span>` : '<span class="li"></span>';
+  e.innerHTML = `<span class="lt">${t}</span>${iHtml}<span class="lx ${cls}">${txt}</span>`;
   l.insertBefore(e, l.firstChild);
 }
 

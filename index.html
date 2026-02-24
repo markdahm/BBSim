@@ -59,20 +59,6 @@
     </div>
   </div>
 
-  <!-- TEAM DETAIL -->
-  <div class="page" id="page-team-detail">
-    <div class="topbar">
-      <div><div class="topbar-title" id="td-title">Team</div><div class="topbar-sub" id="td-sub">Roster</div></div>
-      <div class="topbar-actions">
-        <button class="btn sm" onclick="editTeamName()">Edit Name</button>
-      </div>
-    </div>
-    <div class="page" style="display:block;padding:24px 28px 60px">
-      <div class="breadcrumb" onclick="nav('home')"><span>← League Home</span></div>
-      <div id="team-detail-container"></div>
-    </div>
-  </div>
-
   <!-- PLAYERS PAGE -->
   <div class="page" id="page-players">
     <div class="topbar">
@@ -126,6 +112,24 @@
   <div class="card-wrap">
     <div class="card-close" onclick="closeCardDirect()">✕</div>
     <div class="baseball-card" id="baseball-card"></div>
+  </div>
+</div>
+
+<!-- ROSTER TABLE OVERLAY -->
+<div id="roster-table-overlay" onclick="closeRosterTable()" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:200;display:none;align-items:center;justify-content:center;padding:20px">
+  <div onclick="event.stopPropagation()" style="background:var(--panel);border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,0.4);width:100%;max-width:1200px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:16px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div>
+        <div id="roster-table-title" style="font-family:'Oswald',sans-serif;font-size:1.2rem;font-weight:600;letter-spacing:1px"></div>
+        <div id="roster-header-meta" style="margin-top:4px"></div>
+      </div>
+      <div style="display:flex;gap:0;border:1px solid var(--line);border-radius:3px;overflow:hidden">
+        <button id="roster-tab-bat" onclick="rosterSetTab('bat')" style="padding:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;border:none;cursor:pointer">Batters</button>
+        <button id="roster-tab-pit" onclick="rosterSetTab('pit')" style="padding:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;border:none;cursor:pointer">Pitchers</button>
+      </div>
+      <button onclick="closeRosterTable()" style="background:var(--panel);border:2px solid var(--ink);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+    <div id="roster-table-body" style="overflow:auto;padding:16px 24px 24px"></div>
   </div>
 </div>
 

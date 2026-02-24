@@ -14,7 +14,7 @@ export function randomColor() {
 // ── Team logo ──
 export function teamLogoHtml(team, size = 22) {
   if (team && team.logo) {
-    return `<img src="${team.logo}" style="width:${size}px;height:${size}px;object-fit:contain;vertical-align:middle;border-radius:2px">`;
+    return `<span style="display:inline-block;width:${size}px;height:${size}px;background:url('${team.logo}') center/contain no-repeat;vertical-align:middle;flex-shrink:0;border-radius:2px"></span>`;
   }
   return (team && team.emoji) || '';
 }

@@ -12,8 +12,6 @@ let playerFilter = 'ALL';
 let playerTeamFilter = '';
 let sortCol = 'avg';
 let sortDir = -1;
-let tdDragSrc = null;
-let tdPitchDragSrc = null;
 let schedBuildMode = false;
 let schedShowLoad = false;
 let schedTeamFilter = '';
@@ -25,7 +23,7 @@ let schedOutsideFirst = null;     // first-selected div in outside mode
 // ====================================================================
 // NAVIGATION
 // ====================================================================
-const PAGES = ['home','team-detail','players','simulate','schedule'];
+const PAGES = ['home','players','simulate','schedule'];
 export function nav(page) {
   PAGES.forEach(p => {
     document.getElementById(`page-${p}`).classList.remove('active');
@@ -128,226 +126,298 @@ export function renderHome() {
 // ====================================================================
 // TEAMS
 // ====================================================================
-export function renderTeams() {
-  const leagueOrder = ['American League', 'National League'];
-  const divisionOrder = {
-    'American League': ['AL East', 'AL Central', 'AL West'],
-    'National League': ['NL East', 'NL Central', 'NL West'],
-  };
-
-  // Build lookup: league → division → teams[]
-  const leagueMap = new Map();
-  for (const t of LEAGUE.teams) {
-    const lg = t.league || '—';
-    const dv = t.division || '—';
-    if (!leagueMap.has(lg)) leagueMap.set(lg, new Map());
-    const divMap = leagueMap.get(lg);
-    if (!divMap.has(dv)) divMap.set(dv, []);
-    divMap.get(dv).push(t);
-  }
-  const sortedLeagues = [...leagueMap.keys()].sort((a, b) => {
-    const ai = leagueOrder.indexOf(a), bi = leagueOrder.indexOf(b);
-    if (ai !== -1 && bi !== -1) return ai - bi;
-    if (ai !== -1) return -1; if (bi !== -1) return 1;
-    return a.localeCompare(b);
-  });
-
-  const cols = sortedLeagues.map(leagueName => {
-    const divMap = leagueMap.get(leagueName);
-    const divs = divisionOrder[leagueName] || [...divMap.keys()].sort();
-    let col = `<div class="section-title">${leagueName}</div>`;
-    for (const divName of divs) {
-      const teams = divMap.get(divName);
-      if (!teams) continue;
-      col += `<div class="div-section-title">${divName}</div><div class="teams-grid">`;
-      teams.forEach(t => {
-        const pct = (t.w + t.l) === 0 ? '—' : (t.w / (t.w + t.l)).toFixed(3);
-        col += `<div class="team-card" onclick="openTeam(${t.id})">
-          <div class="tc-color" style="background:${t.color}"></div>
-          <div class="tc-name">${teamLogoHtml(t, 22)} ${t.name}</div>
-          <div class="tc-city" style="color:var(--muted);font-size:0.75rem">${t.division}</div>
-          <div class="tc-stats"><span>W <b>${t.w}</b></span><span>L <b>${t.l}</b></span><span>PCT <b>${pct}</b></span></div>
-        </div>`;
-      });
-      col += '</div>';
-    }
-    return `<div>${col}</div>`;
-  });
-
-  const html = cols.length === 2
-    ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div>`
-    : cols.join('');
-  document.getElementById('teams-container').innerHTML = html;
-}
-
 export function openTeam(id) {
   currentTeamId = id;
-  nav('team-detail');
-  renderTeamDetail();
+  batTableSort = { col: null, dir: -1 };
+  rosterTab = 'bat';
+  renderRosterTableContent();
+  document.getElementById('roster-table-overlay').style.display = 'flex';
 }
 
-export function renderTeamDetail() {
+// ====================================================================
+// ROSTER TABLE OVERLAY  (unified batter + pitcher)
+// ====================================================================
+let pitTableSort = { col: null, dir: 1 };
+let batTableSort = { col: null, dir: -1 };
+let rosterTab = 'bat';
+let batDragSrc = null;
+let pitDragSrc = null;
+
+export function openBatterTable() {
+  batTableSort = { col: null, dir: -1 };
+  rosterTab = 'bat';
+  renderRosterTableContent();
+  document.getElementById('roster-table-overlay').style.display = 'flex';
+}
+
+export function openPitcherTable() {
+  pitTableSort = { col: null, dir: 1 };
+  rosterTab = 'pit';
+  renderRosterTableContent();
+  document.getElementById('roster-table-overlay').style.display = 'flex';
+}
+
+export function closeRosterTable() {
+  document.getElementById('roster-table-overlay').style.display = 'none';
+}
+export const closeBatterTable  = closeRosterTable;
+export const closePitcherTable = closeRosterTable;
+
+export function rosterSetTab(tab) {
+  rosterTab = tab;
+  renderRosterTableContent();
+}
+
+function renderRosterTableContent() {
   const t = LEAGUE.teams.find(t => t.id === currentTeamId);
   if (!t) return;
-  document.getElementById('td-title').innerHTML = `${teamLogoHtml(t, 28)} ${t.name}`;
-  document.getElementById('td-sub').textContent = `${t.division} · ${t.w}W ${t.l}L`;
 
-  let html = `
-  <div class="team-logo-section">
-    <div class="team-logo-box">
-      ${t.logo ? `<img src="${t.logo}" class="team-logo-img">` : `<span class="team-logo-emoji">${t.emoji}</span>`}
-    </div>
-    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted);margin-top:2px">
-      ${t.league} · ${t.division} · Season ${LEAGUE.season}
-    </div>
-    <div style="margin-top:6px">
-      ${t.logo
-        ? `<span class="logo-text-link" onclick="removeTeamLogo()">Change Logo</span>`
-        : `<label class="logo-text-link" style="cursor:pointer">Upload Logo<input type="file" accept="image/*" onchange="uploadTeamLogo(this)" style="display:none"></label>`
-      }
-    </div>
-  </div>`;
+  // Tab button styles
+  const batBtn = document.getElementById('roster-tab-bat');
+  const pitBtn = document.getElementById('roster-tab-pit');
+  if (batBtn) { batBtn.style.background = rosterTab === 'bat' ? 'var(--ink)' : 'var(--panel)'; batBtn.style.color = rosterTab === 'bat' ? 'var(--chalk)' : 'var(--ink)'; }
+  if (pitBtn) { pitBtn.style.background = rosterTab === 'pit' ? 'var(--ink)' : 'var(--panel)'; pitBtn.style.color = rosterTab === 'pit' ? 'var(--chalk)' : 'var(--ink)'; }
 
-  // Lineup editor placeholder (populated by renderLineupEditor after innerHTML is set)
-  html += `<div class="section-title" style="margin-bottom:10px">Batting Lineup <span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;font-weight:400">drag to reorder · click to view card</span></div>
-  <div class="lu-list" id="td-lineup-list" style="margin-bottom:28px"></div>`;
+  // Header: logo + team name + edit button
+  const titleEl = document.getElementById('roster-table-title');
+  if (titleEl) titleEl.innerHTML = `${teamLogoHtml(t, 24)} <span id="roster-team-name">${t.name}</span>` +
+    `<button onclick="editTeamName()" style="margin-left:10px;font-family:'IBM Plex Mono',monospace;font-size:0.55rem;padding:2px 8px;border:1px solid var(--line);background:transparent;cursor:pointer;border-radius:2px;vertical-align:middle">Edit Name</button>`;
 
-  // Pitchers
-  html += `<div class="section-title" style="margin-bottom:10px">Pitching Staff <span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;font-weight:400">drag to reorder · top pitcher starts · click to view card</span></div>
-  <div class="lu-list" id="td-pitcher-list" style="margin-bottom:28px"></div>`;
+  // Meta row: division · record · logo control
+  const metaEl = document.getElementById('roster-header-meta');
+  if (metaEl) {
+    const logoCtrl = t.logo
+      ? `<span class="logo-text-link" onclick="removeTeamLogo()">Change Logo</span>`
+      : `<label class="logo-text-link" style="cursor:pointer">Upload Logo<input type="file" accept="image/*" onchange="uploadTeamLogo(this)" style="display:none"></label>`;
+    metaEl.innerHTML = `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted)">${t.division} · ${t.w}W ${t.l}L · ${rosterTab === 'bat' ? 'Batting Lineup' : 'Pitching Staff'}</span><span style="color:var(--muted);margin:0 6px">·</span>${logoCtrl}`;
+  }
 
-  document.getElementById('team-detail-container').innerHTML = html;
-  renderLineupEditor(t);
-  renderPitcherEditor(t);
+  if (rosterTab === 'bat') renderBatterTableContent();
+  else renderPitcherTableContent();
 }
 
-function renderLineupEditor(t) {
-  const container = document.getElementById('td-lineup-list');
-  if (!container) return;
-  container.innerHTML = '';
-  let dragging = false;
+export function sortBatterTable(col) {
+  if (batTableSort.col === col) {
+    if (batTableSort.dir === 1) batTableSort = { col: null, dir: -1 }; // 3rd click → reset
+    else batTableSort.dir *= -1;
+  } else { batTableSort.col = col; batTableSort.dir = -1; }
+  renderRosterTableContent();
+}
 
-  const mkDivider = label => {
-    const d = document.createElement('div');
-    d.style.cssText = 'font-family:"IBM Plex Mono",monospace;font-size:0.58rem;color:var(--muted);padding:8px 2px 3px;text-transform:uppercase;letter-spacing:0.06em;border-top:1px solid var(--line);margin-top:4px;';
-    d.textContent = label;
-    return d;
-  };
+function renderBatterTableContent() {
+  const t = LEAGUE.teams.find(t => t.id === currentTeamId);
+  if (!t) return;
+  const ind = col => batTableSort.col === col ? (batTableSort.dir === 1 ? ' ↑' : ' ↓') : '';
+  const th = (col, label) => `<th onclick="sortBatterTable('${col}')">${label}${ind(col)}</th>`;
+  const unsorted = !batTableSort.col;
 
-  const mkRow = (b, idx) => {
-    const isLineup = idx < 9;
+  let batters = t.batters.map((b, idx) => ({ b, idx }));
+  if (batTableSort.col) {
+    batters.sort((a, b) => {
+      const bv = x => {
+        const b = x.b;
+        if (batTableSort.col === 'avg') return battingAvg(b);
+        if (batTableSort.col === 'obp') return obpCalc(b);
+        if (batTableSort.col === 'slg') return slgCalc(b);
+        if (batTableSort.col === 'ops') return obpCalc(b) + slgCalc(b);
+        if (batTableSort.col === '2b')  return b.career.doubles || 0;
+        if (batTableSort.col === '3b')  return b.career.triples || 0;
+        return b.career[batTableSort.col] || 0;
+      };
+      return (bv(a) - bv(b)) * batTableSort.dir;
+    });
+  }
+
+  const rows = batters.map(({ b, idx }) => {
     const avg = battingAvg(b).toFixed(3);
-    const row = document.createElement('div');
-    row.className = 'lu-row';
-    if (!isLineup) row.style.opacity = '0.55';
-    row.draggable = true;
-    row.innerHTML = `
-      <span class="lu-num">${isLineup ? idx + 1 : '·'}</span>
-      <div class="lu-nw">
-        <div class="lu-pn">${b.name} <span class="lu-pos">${b.pos}</span> <span class="arch-badge">${b.arch}</span></div>
-        <div class="lu-ps">#${b.num} · AVG ${avg} · HR ${b.career.hr} · RBI ${b.career.rbi}</div>
-      </div>
-      <span style="color:#ccc;font-size:0.8rem">⠿</span>`;
+    const obp = obpCalc(b).toFixed(3);
+    const slg = slgCalc(b).toFixed(3);
+    const ops = (parseFloat(obp) + parseFloat(slg)).toFixed(3);
+    const slot = !batTableSort.col ? (idx < 9 ? idx + 1 : '·') : '·';
+    return `<tr data-player-id="${b.id}" data-bat-idx="${idx}"${unsorted ? ' draggable="true"' : ''} style="cursor:pointer">
+      <td style="text-align:center;color:var(--muted)">${slot}</td>
+      <td style="text-align:left"><b>${b.name}</b></td>
+      <td style="text-align:left"><span class="pos-badge">${b.pos}</span></td>
+      <td>${b.career.g||0}</td><td>${b.career.ab||0}</td><td>${b.career.r||0}</td><td>${b.career.h||0}</td>
+      <td>${b.career.doubles||0}</td><td>${b.career.triples||0}</td><td>${b.career.hr||0}</td><td>${b.career.rbi||0}</td>
+      <td>${b.career.bb||0}</td><td>${b.career.k||0}</td><td>${b.career.sb||0}</td><td>${b.career.cs||0}</td>
+      <td>${avg}</td><td>${obp}</td><td>${slg}</td><td>${ops}</td>
+      <td><button onclick="event.stopPropagation();deletePlayerFromTable('${b.id}')" style="background:transparent;border:1px solid #c00;color:#c00;border-radius:2px;padding:2px 6px;cursor:pointer;font-size:0.65rem">✕</button></td>
+    </tr>`;
+  }).join('');
 
-    row.addEventListener('dragstart', e => {
-      tdDragSrc = idx; dragging = true;
-      row.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-    });
-    row.addEventListener('dragend', () => { row.classList.remove('dragging'); setTimeout(() => { dragging = false; }, 0); });
-    row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
-    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
-    row.addEventListener('drop', e => {
-      e.preventDefault(); row.classList.remove('drag-over');
-      if (tdDragSrc !== null && tdDragSrc !== idx) {
-        const [mv] = t.batters.splice(tdDragSrc, 1);
-        t.batters.splice(idx, 0, mv);
-        saveLeague();
-        renderLineupEditor(t);
-      }
-    });
-    row.addEventListener('click', () => { if (!dragging) openCard(t.id, b.id); });
-    return row;
-  };
+  const hintHtml = unsorted ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;margin-left:8px">drag to reorder</span>` : '';
+  const container = document.getElementById('roster-table-body');
+  container.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="players-table" style="font-size:0.72rem;min-width:1000px">
+        <thead><tr>
+          <th>#</th>
+          <th style="text-align:left">Player</th>
+          <th style="text-align:left">Pos${hintHtml}</th>
+          ${th('g','G')}${th('ab','AB')}${th('r','R')}${th('h','H')}
+          ${th('2b','2B')}${th('3b','3B')}${th('hr','HR')}${th('rbi','RBI')}
+          ${th('bb','BB')}${th('k','K')}${th('sb','SB')}${th('cs','CS')}
+          ${th('avg','AVG')}${th('obp','OBP')}${th('slg','SLG')}${th('ops','OPS')}
+          <th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 
-  const lineup = t.batters.slice(0, 9);
-  const bench  = t.batters.slice(9);
-
-  container.appendChild(mkDivider(`Starters — ${lineup.length}`));
-  lineup.forEach((b, i) => container.appendChild(mkRow(b, i)));
-
-  if (bench.length > 0) {
-    container.appendChild(mkDivider(`Bench — ${bench.length}`));
-    bench.forEach((b, i) => container.appendChild(mkRow(b, 9 + i)));
-  }
+  let batDragging = false;
+  container.querySelectorAll('tr[data-player-id]').forEach(row => {
+    const playerId = row.dataset.playerId;
+    const idx = parseInt(row.dataset.batIdx);
+    row.addEventListener('click', () => { if (!batDragging) openCard(t.id, playerId); });
+    if (unsorted) {
+      row.addEventListener('dragstart', e => {
+        batDragSrc = idx; batDragging = true;
+        row.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      row.addEventListener('dragend', () => { row.classList.remove('dragging'); setTimeout(() => { batDragging = false; }, 0); });
+      row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', e => {
+        e.preventDefault(); row.classList.remove('drag-over');
+        if (batDragSrc !== null && batDragSrc !== idx) {
+          const [mv] = t.batters.splice(batDragSrc, 1);
+          t.batters.splice(idx, 0, mv);
+          saveLeague();
+          renderRosterTableContent();
+        }
+      });
+    }
+  });
 }
 
-function renderPitcherEditor(t) {
-  const container = document.getElementById('td-pitcher-list');
-  if (!container) return;
-  container.innerHTML = '';
-  let dragging = false;
+export function sortPitcherTable(col) {
+  if (pitTableSort.col === col) {
+    const defaultDir = (col === 'era' || col === 'whip' || col === 'oba') ? 1 : -1;
+    if (pitTableSort.dir !== defaultDir) pitTableSort = { col: null, dir: 1 }; // 3rd click → reset
+    else pitTableSort.dir *= -1;
+  } else { pitTableSort.col = col; pitTableSort.dir = (col === 'era' || col === 'whip' || col === 'oba') ? 1 : -1; }
+  renderRosterTableContent();
+}
 
-  const mkRow = (p, idx) => {
-    const era  = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
-    const whip = p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
-    const role = idx < 5 ? 'SP' : idx === 5 ? 'CL' : 'RP';
-    const row = document.createElement('div');
-    row.className = 'lu-row';
-    row.draggable = true;
-    row.innerHTML = `
-      <span class="lu-num" style="color:${idx === 0 ? 'var(--accent)' : 'var(--muted)'}">${idx === 0 ? '★' : idx + 1}</span>
-      <div class="lu-nw">
-        <div class="lu-pn">${p.name} <span class="pos-badge">${role}</span> <span class="arch-badge">${p.arch}</span></div>
-        <div class="lu-ps">#${p.num} · ERA ${era} · WHIP ${whip} · ${p.career.w}W ${p.career.l}L · ${p.career.k}K</div>
-      </div>
-      <span style="color:#ccc;font-size:0.8rem">⠿</span>`;
+function renderPitcherTableContent() {
+  const t = LEAGUE.teams.find(t => t.id === currentTeamId);
+  if (!t) return;
+  const fmtIP = ip => { const o = Math.round((ip || 0) * 3); return `${Math.floor(o / 3)}.${o % 3}`; };
+  const ind = col => pitTableSort.col === col ? (pitTableSort.dir === 1 ? ' ↑' : ' ↓') : '';
+  const th = (col, label, align) => `<th onclick="sortPitcherTable('${col}')"${align ? ` style="text-align:${align}"` : ''}>${label}${ind(col)}</th>`;
+  const unsorted = !pitTableSort.col;
 
-    row.addEventListener('dragstart', e => {
-      tdPitchDragSrc = idx; dragging = true;
-      row.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
+  let pitchers = t.pitchers.map((p, idx) => ({ p, idx }));
+  if (pitTableSort.col) {
+    pitchers.sort((a, b) => {
+      const pv = x => {
+        const p = x.p;
+        if (pitTableSort.col === 'era')  return p.career.ip > 0 ? (p.career.er / p.career.ip) * 9 : p.era;
+        if (pitTableSort.col === 'whip') return p.career.ip > 0 ? (p.career.bb + p.career.h) / p.career.ip : 99;
+        if (pitTableSort.col === 'oba')  { const ab = (p.career.bf||0)-(p.career.bb||0)-(p.career.hbp||0); return ab > 0 ? p.career.h / ab : 1; }
+        if (pitTableSort.col === 'k9')   return p.career.ip > 0 ? (p.career.k / p.career.ip) * 9 : 0;
+        if (pitTableSort.col === 'ip')   return p.career.ip || 0;
+        return p.career[pitTableSort.col] || 0;
+      };
+      return (pv(a) - pv(b)) * pitTableSort.dir;
     });
-    row.addEventListener('dragend', () => { row.classList.remove('dragging'); setTimeout(() => { dragging = false; }, 0); });
-    row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
-    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
-    row.addEventListener('drop', e => {
-      e.preventDefault(); row.classList.remove('drag-over');
-      if (tdPitchDragSrc !== null && tdPitchDragSrc !== idx) {
-        const [mv] = t.pitchers.splice(tdPitchDragSrc, 1);
-        t.pitchers.splice(idx, 0, mv);
-        t.pitchers.forEach((p, i) => { p.pos = i < 5 ? 'SP' : i === 5 ? 'CL' : 'RP'; });
-        t.activePitcher = 0;
-        t.startingPitcherIdx = 0;
-        saveLeague();
-        renderPitcherEditor(t);
-      }
-    });
-    row.addEventListener('click', () => { if (!dragging) openCard(t.id, p.id); });
-    return row;
-  };
-
-  const mkDivider = label => {
-    const d = document.createElement('div');
-    d.style.cssText = 'font-family:"IBM Plex Mono",monospace;font-size:0.58rem;color:var(--muted);padding:8px 2px 3px;text-transform:uppercase;letter-spacing:0.06em;border-top:1px solid var(--line);margin-top:4px;';
-    d.textContent = label;
-    return d;
-  };
-
-  const starters = t.pitchers.slice(0, 5);
-  const closer   = t.pitchers.slice(5, 6);
-  const bullpen  = t.pitchers.slice(6);
-
-  container.appendChild(mkDivider(`Starting Rotation — ${starters.length}`));
-  starters.forEach((p, i) => container.appendChild(mkRow(p, i)));
-
-  container.appendChild(mkDivider('Closer'));
-  closer.forEach((p, i) => container.appendChild(mkRow(p, 5 + i)));
-
-  if (bullpen.length > 0) {
-    container.appendChild(mkDivider(`Bullpen — ${bullpen.length}`));
-    bullpen.forEach((p, i) => container.appendChild(mkRow(p, 6 + i)));
   }
+
+  const mkRow = ({ p, idx }) => {
+    const role  = idx < 5 ? 'SP' : idx < 7 ? 'CL' : 'RP';
+    const era   = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
+    const whip  = p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
+    const abF   = (p.career.bf || 0) - (p.career.bb || 0) - (p.career.hbp || 0);
+    const oba   = abF > 0 ? (p.career.h / abF).toFixed(3) : '—';
+    const k9    = p.career.ip > 0 ? ((p.career.k / p.career.ip) * 9).toFixed(1) : '—';
+    return `<tr data-player-id="${p.id}" data-pit-idx="${idx}"${unsorted ? ' draggable="true"' : ''} style="cursor:pointer">
+      <td style="text-align:left"><b>${p.name}</b></td>
+      <td style="text-align:left"><span class="pos-badge">${role}</span></td>
+      <td>${era}</td><td>${p.career.w||0}</td><td>${p.career.l||0}</td><td>${whip}</td>
+      <td>${p.career.g||0}</td><td>${p.career.gs||0}</td><td>${p.career.cg||0}</td><td>${p.career.sho||0}</td>
+      <td>${fmtIP(p.career.ip)}</td><td>${p.career.k||0}</td><td>${p.career.bb||0}</td>
+      <td>${p.career.sv||0}</td><td>${p.career.svo||0}</td>
+      <td>${p.career.h||0}</td><td>${p.career.r||0}</td><td>${p.career.er||0}</td>
+      <td>${p.career.hr||0}</td><td>${p.career.hbp||0}</td>
+      <td>${k9}</td><td>${oba}</td>
+      <td><button onclick="event.stopPropagation();deletePlayerFromTable('${p.id}')" style="background:transparent;border:1px solid #c00;color:#c00;border-radius:2px;padding:2px 6px;cursor:pointer;font-size:0.65rem">✕</button></td>
+    </tr>`;
+  };
+  const mkDivRow = label =>
+    `<tr><td colspan="23" style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);padding:8px 2px 3px;text-transform:uppercase;letter-spacing:0.06em;border-top:1px solid var(--line);pointer-events:none">${label}</td></tr>`;
+  let rows;
+  if (unsorted) {
+    const sp = pitchers.filter(({ idx }) => idx < 5);
+    const cl = pitchers.filter(({ idx }) => idx >= 5 && idx < 7);
+    const rp = pitchers.filter(({ idx }) => idx >= 7);
+    rows = mkDivRow(`Starting Rotation — ${sp.length}`) + sp.map(mkRow).join('') +
+           mkDivRow(`Closer — ${cl.length}`) + cl.map(mkRow).join('') +
+           (rp.length > 0 ? mkDivRow(`Bullpen — ${rp.length}`) + rp.map(mkRow).join('') : '');
+  } else {
+    rows = pitchers.map(mkRow).join('');
+  }
+
+  const hintHtml = unsorted ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;margin-left:8px">drag to reorder</span>` : '';
+  const container = document.getElementById('roster-table-body');
+  container.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="players-table" style="font-size:0.72rem;min-width:1000px">
+        <thead><tr>
+          <th style="text-align:left">Player</th>
+          <th style="text-align:left">Role${hintHtml}</th>
+          ${th('era','ERA')}${th('w','W')}${th('l','L')}${th('whip','WHIP')}
+          ${th('g','G')}${th('gs','GS')}${th('cg','CG')}${th('sho','SHO')}
+          ${th('ip','IP')}${th('k','K')}${th('bb','BB')}${th('sv','SV')}${th('svo','SVO')}
+          ${th('h','H')}${th('r','R')}${th('er','ER')}${th('hr','HR')}${th('hbp','HBP')}
+          ${th('k9','K/9')}${th('oba','OBA')}
+          <th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  let pitDragging = false;
+  container.querySelectorAll('tr[data-player-id]').forEach(row => {
+    const playerId = row.dataset.playerId;
+    const idx = parseInt(row.dataset.pitIdx);
+    row.addEventListener('click', () => { if (!pitDragging) openCard(t.id, playerId); });
+    if (unsorted) {
+      row.addEventListener('dragstart', e => {
+        pitDragSrc = idx; pitDragging = true;
+        row.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      row.addEventListener('dragend', () => { row.classList.remove('dragging'); setTimeout(() => { pitDragging = false; }, 0); });
+      row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
+      row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+      row.addEventListener('drop', e => {
+        e.preventDefault(); row.classList.remove('drag-over');
+        if (pitDragSrc !== null && pitDragSrc !== idx) {
+          const [mv] = t.pitchers.splice(pitDragSrc, 1);
+          t.pitchers.splice(idx, 0, mv);
+          t.pitchers.forEach((p, i) => { p.pos = i < 5 ? 'SP' : i < 7 ? 'CL' : 'RP'; });
+          t.activePitcher = 0;
+          t.startingPitcherIdx = 0;
+          saveLeague();
+          renderRosterTableContent();
+        }
+      });
+    }
+  });
+}
+
+export function deletePlayerFromTable(playerId) {
+  const t = LEAGUE.teams.find(t => t.id === currentTeamId);
+  if (!t) return;
+  const p = [...t.batters, ...t.pitchers].find(p => p.id === playerId);
+  if (!p) return;
+  if (!confirm(`Delete ${p.name}?`)) return;
+  if (p.type === 'batter') t.batters = t.batters.filter(b => b.id !== playerId);
+  else t.pitchers = t.pitchers.filter(pl => pl.id !== playerId);
+  saveLeague();
+  renderRosterTableContent();
 }
 
 export function uploadTeamLogo(input) {
@@ -356,7 +426,7 @@ export function uploadTeamLogo(input) {
   const t = LEAGUE.teams.find(t => t.id === currentTeamId);
   if (!t) return;
   const reader = new FileReader();
-  reader.onload = e => { t.logo = e.target.result; saveLeague(); renderTeamDetail(); };
+  reader.onload = e => { t.logo = e.target.result; saveLeague(); renderRosterTableContent(); };
   reader.readAsDataURL(file);
 }
 
@@ -365,21 +435,20 @@ export function removeTeamLogo() {
   if (!t) return;
   delete t.logo;
   saveLeague();
-  renderTeamDetail();
+  renderRosterTableContent();
 }
 
 export function editTeamName() {
   const t = LEAGUE.teams.find(t => t.id === currentTeamId);
   if (!t) return;
-  const titleEl = document.getElementById('td-title');
-  titleEl.innerHTML = `
-    ${teamLogoHtml(t, 28)}
+  const titleEl = document.getElementById('roster-table-title');
+  if (!titleEl) return;
+  titleEl.innerHTML = `${teamLogoHtml(t, 24)}
     <input id="team-name-input" value="${t.name}"
-      style="font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;border:none;border-bottom:2px solid var(--ink);background:transparent;outline:none;width:300px;padding:2px 0;margin-left:6px;"
+      style="font-family:'Oswald',sans-serif;font-size:1.1rem;font-weight:600;letter-spacing:1px;border:none;border-bottom:2px solid var(--ink);background:transparent;outline:none;width:220px;padding:2px 0;margin-left:6px;vertical-align:middle;"
       onkeydown="if(event.key==='Enter')saveTeamName();if(event.key==='Escape')cancelTeamName()">
-    <button onclick="saveTeamName()" style="margin-left:10px;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;padding:4px 10px;border:2px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;border-radius:2px;">Save</button>
-    <button onclick="cancelTeamName()" style="margin-left:6px;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;padding:4px 10px;border:2px solid #ccc;background:transparent;cursor:pointer;border-radius:2px;">Cancel</button>
-  `;
+    <button onclick="saveTeamName()" style="margin-left:8px;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;padding:3px 9px;border:2px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;border-radius:2px;vertical-align:middle">Save</button>
+    <button onclick="cancelTeamName()" style="margin-left:4px;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;padding:3px 9px;border:2px solid #ccc;background:transparent;cursor:pointer;border-radius:2px;vertical-align:middle">Cancel</button>`;
   document.getElementById('team-name-input').focus();
   document.getElementById('team-name-input').select();
 }
@@ -392,14 +461,12 @@ export function saveTeamName() {
   if (newName) {
     t.name = newName;
     saveLeague();
-    renderTeamDetail();
+    renderRosterTableContent();
   }
 }
 
 export function cancelTeamName() {
-  const t = LEAGUE.teams.find(t => t.id === currentTeamId);
-  const titleEl = document.getElementById('td-title');
-  if (titleEl && t) titleEl.innerHTML = `${teamLogoHtml(t, 28)} ${t.name}`;
+  renderRosterTableContent();
 }
 
 // ====================================================================
@@ -450,36 +517,17 @@ function projectPlayer(p) {
 function renderCard(t, p) {
   const isBatter = p.type === 'batter';
   const card = document.getElementById('baseball-card');
+  const fmtIP = ip => { const o = Math.round((ip || 0) * 3); return `${Math.floor(o / 3)}.${o % 3}`; };
 
   const avg = isBatter ? battingAvg(p).toFixed(3) : '—';
   const obp = isBatter ? obpCalc(p).toFixed(3) : '—';
   const slg = isBatter ? slgCalc(p).toFixed(3) : '—';
   const ops = isBatter ? (parseFloat(obp) + parseFloat(slg)).toFixed(3) : '—';
 
-  // Seasons table rows
-  let seasonsHtml = '';
-  if (p.seasons && p.seasons.length > 0) {
-    p.seasons.slice(-5).forEach(s => {
-      if (isBatter) {
-        const savg = s.ab > 0 ? (s.h / s.ab).toFixed(3) : '.000';
-        seasonsHtml += `<tr><td>${s.year}</td><td>${s.pa || 0}</td><td>${savg}</td><td>${s.hr || 0}</td><td>${s.rbi || 0}</td><td>${s.r || 0}</td><td>${s.bb || 0}</td><td>${s.k || 0}</td></tr>`;
-      } else {
-        const sera  = s.ip > 0 ? ((s.er / s.ip) * 9).toFixed(2) : '—';
-        const swhip = s.ip > 0 ? (((s.bb || 0) + (s.h || 0)) / s.ip).toFixed(2) : '—';
-        seasonsHtml += `<tr><td>${s.year}</td><td>${s.w || 0}-${s.l || 0}</td><td>${sera}</td><td>${swhip}</td><td>${(s.ip || 0).toFixed(1)}</td><td>${s.k || 0}</td><td>${s.bb || 0}</td></tr>`;
-      }
-    });
-    // Career totals
-    if (isBatter) {
-      seasonsHtml += `<tr class="total-row"><td>Career</td><td>${p.career.pa}</td><td>${avg}</td><td>${p.career.hr}</td><td>${p.career.rbi}</td><td>${p.career.r}</td><td>${p.career.bb}</td><td>${p.career.k}</td></tr>`;
-    } else {
-      const cera  = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
-      const cwhip = p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
-      seasonsHtml += `<tr class="total-row"><td>Career</td><td>${p.career.w}-${p.career.l}</td><td>${cera}</td><td>${cwhip}</td><td>${p.career.ip.toFixed(1)}</td><td>${p.career.k}</td><td>${p.career.bb}</td></tr>`;
-    }
-  } else {
-    seasonsHtml = `<tr><td colspan="8" style="text-align:center;color:var(--muted);font-size:0.7rem;padding:10px">No games played yet. Simulate games to build stats.</td></tr>`;
-  }
+  const playerList = [...t.batters, ...t.pitchers];
+  const playerIdx  = playerList.findIndex(pl => pl.id === p.id);
+  const hasPrev = playerIdx > 0;
+  const hasNext = playerIdx < playerList.length - 1;
 
   // Ratings (0-100 scale)
   const ratings = isBatter ? [
@@ -512,9 +560,7 @@ function renderCard(t, p) {
     <div class="pcs-box"><div class="pcs-val">${proj.HR}</div><div class="pcs-lbl">HR</div></div>
     <div class="pcs-box"><div class="pcs-val">${proj.IP}</div><div class="pcs-lbl">IP</div></div>`;
 
-  const battingSeasonCols = `<th>Year</th><th>PA</th><th>AVG</th><th>HR</th><th>RBI</th><th>R</th><th>BB</th><th>K</th>`;
-  const pitchSeasonCols   = `<th>Year</th><th>W-L</th><th>ERA</th><th>WHIP</th><th>IP</th><th>K</th><th>BB</th>`;
-
+  const btnBase = 'flex:1;font-family:\'IBM Plex Mono\',monospace;font-size:0.6rem;padding:5px 0;background:transparent;border:1px solid var(--line);border-radius:2px;cursor:pointer;';
   card.innerHTML = `
   <div class="card-left">
     <div class="card-year">${LEAGUE.season} · ${LEAGUE.name}</div>
@@ -522,7 +568,14 @@ function renderCard(t, p) {
     <div class="card-player-avatar">${p.emoji}</div>
     <div class="card-player-name">${p.name}</div>
     <div class="card-player-pos">${p.pos} · ${p.arch}</div>
-    <div class="card-number">#${p.num}</div>
+    <div style="margin-top:auto;position:relative;z-index:1">
+      <div style="font-family:'Playfair Display',serif;font-size:3rem;font-weight:900;color:#222;text-align:right;line-height:1">#${p.num}</div>
+      <div style="display:flex;gap:6px;padding-top:10px">
+        <button onclick="prevCard()" style="${btnBase}color:${hasPrev ? 'var(--chalk)' : '#555'};opacity:${hasPrev ? '1' : '0.4'};border-color:${hasPrev ? '#555' : '#333'}" ${hasPrev ? '' : 'disabled'}>← Prev</button>
+        <button onclick="nextCard()" style="${btnBase}color:${hasNext ? 'var(--chalk)' : '#555'};opacity:${hasNext ? '1' : '0.4'};border-color:${hasNext ? '#555' : '#333'}" ${hasNext ? '' : 'disabled'}>Next →</button>
+      </div>
+      <button onclick="deleteCurrentPlayer()" style="width:100%;margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;padding:5px 0;background:transparent;border:1px solid #c00;color:#c00;border-radius:2px;cursor:pointer">Delete Player</button>
+    </div>
   </div>
   <div class="card-right">
     <div class="card-right-top">
@@ -532,38 +585,69 @@ function renderCard(t, p) {
     ${isBatter ? `
     <div>
       <div class="stats-section-title">Career Highlights</div>
-      <div class="career-stats-grid">
-        <div class="cs-box"><div class="cs-val">${avg}</div><div class="cs-lbl">AVG</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.hr}</div><div class="cs-lbl">HR</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.rbi}</div><div class="cs-lbl">RBI</div></div>
-        <div class="cs-box"><div class="cs-val">${ops}</div><div class="cs-lbl">OPS</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.h}</div><div class="cs-lbl">Hits</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.k}</div><div class="cs-lbl">K</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.bb}</div><div class="cs-lbl">BB</div></div>
-        <div class="cs-box"><div class="cs-val">${obp}</div><div class="cs-lbl">OBP</div></div>
+      <div style="overflow-x:auto">
+        <table class="season-log-table" style="min-width:700px">
+          <thead><tr>
+            <th>G</th><th>AB</th><th>R</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th>
+            <th>BB</th><th>K</th><th>SB</th><th>CS</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th>
+          </tr></thead>
+          <tbody><tr>
+            <td>${p.career.g || 0}</td>
+            <td>${p.career.ab || 0}</td>
+            <td>${p.career.r || 0}</td>
+            <td>${p.career.h || 0}</td>
+            <td>${p.career.doubles || 0}</td>
+            <td>${p.career.triples || 0}</td>
+            <td>${p.career.hr || 0}</td>
+            <td>${p.career.rbi || 0}</td>
+            <td>${p.career.bb || 0}</td>
+            <td>${p.career.k || 0}</td>
+            <td>${p.career.sb || 0}</td>
+            <td>${p.career.cs || 0}</td>
+            <td>${avg}</td>
+            <td>${obp}</td>
+            <td>${slg}</td>
+            <td>${ops}</td>
+          </tr></tbody>
+        </table>
       </div>
     </div>` : `
     <div>
       <div class="stats-section-title">Career Highlights</div>
-      <div class="career-stats-grid">
-        <div class="cs-box"><div class="cs-val">${p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)}</div><div class="cs-lbl">ERA</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.w}</div><div class="cs-lbl">Wins</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.k}</div><div class="cs-lbl">K</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.ip.toFixed(0)}</div><div class="cs-lbl">IP</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.bb}</div><div class="cs-lbl">BB</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.l}</div><div class="cs-lbl">Losses</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—'}</div><div class="cs-lbl">WHIP</div></div>
-        <div class="cs-box"><div class="cs-val">${p.career.ip > 0 ? ((p.career.k / p.career.ip) * 9).toFixed(1) : '—'}</div><div class="cs-lbl">K/9</div></div>
+      <div style="overflow-x:auto">
+        <table class="season-log-table" style="min-width:680px">
+          <thead><tr>
+            <th>ERA</th><th>W</th><th>L</th><th>WHIP</th>
+            <th>G</th><th>GS</th><th>CG</th><th>SHO</th>
+            <th>IP</th><th>K</th><th>BB</th><th>SV</th>
+            <th>H</th><th>R</th><th>ER</th><th>HR</th>
+            <th>HBP</th><th>SVO</th><th>K/9</th><th>OBA</th>
+          </tr></thead>
+          <tbody><tr>
+            <td>${p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)}</td>
+            <td>${p.career.w || 0}</td>
+            <td>${p.career.l || 0}</td>
+            <td>${p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—'}</td>
+            <td>${p.career.g || 0}</td>
+            <td>${p.career.gs || 0}</td>
+            <td>${p.career.cg || 0}</td>
+            <td>${p.career.sho || 0}</td>
+            <td>${fmtIP(p.career.ip)}</td>
+            <td>${p.career.k || 0}</td>
+            <td>${p.career.bb || 0}</td>
+            <td>${p.career.sv || 0}</td>
+            <td>${p.career.h || 0}</td>
+            <td>${p.career.r || 0}</td>
+            <td>${p.career.er || 0}</td>
+            <td>${p.career.hr || 0}</td>
+            <td>${p.career.hbp || 0}</td>
+            <td>${p.career.svo || 0}</td>
+            <td>${p.career.ip > 0 ? ((p.career.k / p.career.ip) * 9).toFixed(1) : '—'}</td>
+            <td>${(() => { const ab = (p.career.bf||0)-(p.career.bb||0)-(p.career.hbp||0); return ab > 0 ? (p.career.h/ab).toFixed(3) : '—'; })()}</td>
+          </tr></tbody>
+        </table>
       </div>
     </div>`}
-
-    <div class="season-log">
-      <div class="stats-section-title">Season Log</div>
-      <table class="season-log-table">
-        <thead><tr>${isBatter ? battingSeasonCols : pitchSeasonCols}</tr></thead>
-        <tbody>${seasonsHtml}</tbody>
-      </table>
-    </div>
 
     <div>
       <div class="stats-section-title">Scouting Report</div>
@@ -622,7 +706,24 @@ export function updatePlayerName(name) {
   const pn = document.querySelector('.card-player-name');
   if (pn) pn.textContent = name.trim();
   saveLeague();
-  renderTeamDetail();
+}
+
+export function prevCard() {
+  if (!currentPlayer) return;
+  const list = [...currentPlayer.team.batters, ...currentPlayer.team.pitchers];
+  const idx = list.findIndex(pl => pl.id === currentPlayer.player.id);
+  if (idx <= 0) return;
+  currentPlayer.player = list[idx - 1];
+  renderCard(currentPlayer.team, currentPlayer.player);
+}
+
+export function nextCard() {
+  if (!currentPlayer) return;
+  const list = [...currentPlayer.team.batters, ...currentPlayer.team.pitchers];
+  const idx = list.findIndex(pl => pl.id === currentPlayer.player.id);
+  if (idx >= list.length - 1) return;
+  currentPlayer.player = list[idx + 1];
+  renderCard(currentPlayer.team, currentPlayer.player);
 }
 
 export function closeCard(e) {
@@ -633,11 +734,25 @@ export function closeCardDirect() {
   currentPlayer = null;
 }
 
+export function deleteCurrentPlayer() {
+  if (!currentPlayer) return;
+  const { team: t, player: p } = currentPlayer;
+  if (!confirm(`Delete ${p.name} from ${t.name}?`)) return;
+  if (p.type === 'batter') t.batters = t.batters.filter(b => b.id !== p.id);
+  else t.pitchers = t.pitchers.filter(pl => pl.id !== p.id);
+  saveLeague();
+  closeCardDirect();
+  const overlay = document.getElementById('roster-table-overlay');
+  if (overlay && overlay.style.display === 'flex') renderRosterTableContent();
+}
+
 // ====================================================================
 // PLAYERS TABLE (league-wide)
 // ====================================================================
 export function setFilter(f, el) {
   playerFilter = f;
+  if (f === 'PIT' && ['avg', 'hr', 'rbi', 'pa'].includes(sortCol)) { sortCol = 'era'; sortDir = 1; }
+  if (f === 'BAT' && !['avg', 'hr', 'rbi', 'k', 'pa', 'era', 'whip', 'name', 'team'].includes(sortCol)) { sortCol = 'avg'; sortDir = -1; }
   document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   renderPlayersTable();
@@ -672,62 +787,154 @@ export function renderPlayersTable() {
     allPitchers().forEach(p => { if (matchesTeam(p) && (!search || p.name.toLowerCase().includes(search) || p.teamName.toLowerCase().includes(search))) players.push(p); });
   }
 
+  const isPitView = playerFilter === 'PIT';
+  const formatIP  = ip => { const o = Math.round((ip || 0) * 3); return `${Math.floor(o / 3)}.${o % 3}`; };
+
+  // Pitcher table needs horizontal scroll and compact font
+  const tbl = document.getElementById('players-table');
+  if (tbl) {
+    tbl.style.fontSize = isPitView ? '0.72rem' : '';
+    const wrap = tbl.parentElement;
+    if (wrap) wrap.style.overflowX = isPitView ? 'auto' : '';
+  }
+
   // Sort
   players.sort((a, b) => {
     let av = 0, bv = 0;
-    if      (sortCol === 'avg') { av = battingAvg(a); bv = battingAvg(b); }
-    else if (sortCol === 'hr')  { av = a.career.hr; bv = b.career.hr; }
-    else if (sortCol === 'rbi') { av = a.career.rbi; bv = b.career.rbi; }
-    else if (sortCol === 'k')   { av = a.career.k; bv = b.career.k; }
-    else if (sortCol === 'era')  { av = a.career?.ip > 0 ? (a.career.er / a.career.ip) * 9 : a.era || 99; bv = b.career?.ip > 0 ? (b.career.er / b.career.ip) * 9 : b.era || 99; }
-    else if (sortCol === 'whip') { av = a.career?.ip > 0 ? (a.career.bb + a.career.h) / a.career.ip : 99; bv = b.career?.ip > 0 ? (b.career.bb + b.career.h) / b.career.ip : 99; }
-    else if (sortCol === 'pa')  { av = a.career.pa || 0; bv = b.career.pa || 0; }
+    if      (sortCol === 'avg')  { av = battingAvg(a); bv = battingAvg(b); }
+    else if (sortCol === 'hr')   { av = a.career.hr || 0; bv = b.career.hr || 0; }
+    else if (sortCol === 'rbi')  { av = a.career.rbi || 0; bv = b.career.rbi || 0; }
+    else if (sortCol === 'k')    { av = a.career.k || 0; bv = b.career.k || 0; }
+    else if (sortCol === 'era')  { av = (a.career?.ip || 0) > 0 ? (a.career.er / a.career.ip) * 9 : (a.era || 99); bv = (b.career?.ip || 0) > 0 ? (b.career.er / b.career.ip) * 9 : (b.era || 99); }
+    else if (sortCol === 'whip') { av = (a.career?.ip || 0) > 0 ? (a.career.bb + a.career.h) / a.career.ip : 99; bv = (b.career?.ip || 0) > 0 ? (b.career.bb + b.career.h) / b.career.ip : 99; }
+    else if (sortCol === 'pa')   { av = a.career.pa || 0; bv = b.career.pa || 0; }
+    else if (sortCol === 'pw')   { av = a.career.w || 0; bv = b.career.w || 0; }
+    else if (sortCol === 'pl')   { av = a.career.l || 0; bv = b.career.l || 0; }
+    else if (sortCol === 'pgs')  { av = a.career.gs || 0; bv = b.career.gs || 0; }
+    else if (sortCol === 'pg')   { av = a.career.g || 0; bv = b.career.g || 0; }
+    else if (sortCol === 'pcg')  { av = a.career.cg || 0; bv = b.career.cg || 0; }
+    else if (sortCol === 'psho') { av = a.career.sho || 0; bv = b.career.sho || 0; }
+    else if (sortCol === 'psv')  { av = a.career.sv || 0; bv = b.career.sv || 0; }
+    else if (sortCol === 'psvo') { av = a.career.svo || 0; bv = b.career.svo || 0; }
+    else if (sortCol === 'pip')  { av = a.career.ip || 0; bv = b.career.ip || 0; }
+    else if (sortCol === 'ph')   { av = a.career.h || 0; bv = b.career.h || 0; }
+    else if (sortCol === 'pr')   { av = a.career.r || 0; bv = b.career.r || 0; }
+    else if (sortCol === 'per')  { av = a.career.er || 0; bv = b.career.er || 0; }
+    else if (sortCol === 'phr')  { av = a.career.hr || 0; bv = b.career.hr || 0; }
+    else if (sortCol === 'phbp') { av = a.career.hbp || 0; bv = b.career.hbp || 0; }
+    else if (sortCol === 'pbb')  { av = a.career.bb || 0; bv = b.career.bb || 0; }
+    else if (sortCol === 'poba') {
+      const abA = (a.career.bf || 0) - (a.career.bb || 0) - (a.career.hbp || 0);
+      const abB = (b.career.bf || 0) - (b.career.bb || 0) - (b.career.hbp || 0);
+      av = abA > 0 ? (a.career.h || 0) / abA : 0; bv = abB > 0 ? (b.career.h || 0) / abB : 0;
+    }
     return (av - bv) * sortDir;
   });
 
   // Header
   const thead = document.getElementById('players-thead');
-  thead.innerHTML = `
-    <th onclick="doSort('name')" style="text-align:left">Player</th>
-    <th onclick="doSort('team')" style="text-align:left">Team</th>
-    <th style="text-align:left">Pos</th>
-    <th onclick="doSort('pa')">PA</th>
-    <th onclick="doSort('avg')">AVG</th>
-    <th onclick="doSort('hr')">HR</th>
-    <th onclick="doSort('rbi')">RBI</th>
-    <th onclick="doSort('k')">K</th>
-    <th onclick="doSort('era')">ERA</th>
-    <th onclick="doSort('whip')">WHIP</th>
-  `;
+  if (isPitView) {
+    thead.innerHTML = `
+      <th onclick="doSort('name')" style="text-align:left">Player</th>
+      <th onclick="doSort('team')" style="text-align:left">Team</th>
+      <th style="text-align:left">Pos</th>
+      <th onclick="doSort('pw')">W</th>
+      <th onclick="doSort('pl')">L</th>
+      <th onclick="doSort('era')">ERA</th>
+      <th onclick="doSort('pgs')">GS</th>
+      <th onclick="doSort('pg')">G</th>
+      <th onclick="doSort('pcg')">CG</th>
+      <th onclick="doSort('psho')">SHO</th>
+      <th onclick="doSort('psv')">SV</th>
+      <th onclick="doSort('psvo')">SVO</th>
+      <th onclick="doSort('pip')">IP</th>
+      <th onclick="doSort('ph')">H</th>
+      <th onclick="doSort('pr')">R</th>
+      <th onclick="doSort('per')">ER</th>
+      <th onclick="doSort('phr')">HR</th>
+      <th onclick="doSort('phbp')">HBP</th>
+      <th onclick="doSort('pbb')">BB</th>
+      <th onclick="doSort('k')">K</th>
+      <th onclick="doSort('whip')">WHIP</th>
+      <th onclick="doSort('poba')">OBA</th>
+    `;
+  } else {
+    thead.innerHTML = `
+      <th onclick="doSort('name')" style="text-align:left">Player</th>
+      <th onclick="doSort('team')" style="text-align:left">Team</th>
+      <th style="text-align:left">Pos</th>
+      <th onclick="doSort('pa')">PA</th>
+      <th onclick="doSort('avg')">AVG</th>
+      <th onclick="doSort('hr')">HR</th>
+      <th onclick="doSort('rbi')">RBI</th>
+      <th onclick="doSort('k')">K</th>
+      <th onclick="doSort('era')">ERA</th>
+      <th onclick="doSort('whip')">WHIP</th>
+    `;
+  }
   thead.querySelectorAll('th').forEach(th => {
-    if (th.textContent.toLowerCase().includes(sortCol)) {
+    if (th.getAttribute('onclick')?.includes(sortCol)) {
       th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
     }
   });
 
   const tbody = document.getElementById('players-tbody');
+  const colCount = isPitView ? 22 : 10;
   if (players.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No players found.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">No players found.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = players.map(p => {
-    const avg  = p.type === 'batter'  ? battingAvg(p).toFixed(3) : '—';
-    const era  = p.type === 'pitcher' ? (p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)) : '—';
-    const whip = p.type === 'pitcher' ? (p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—') : '—';
-    return `<tr onclick="openCardById('${p.id}')">
-      <td><b>${p.name}</b></td>
-      <td>${p.teamName || ''}</td>
-      <td><span class="pos-badge">${p.pos}</span></td>
-      <td>${p.career.pa || 0}</td>
-      <td>${avg}</td>
-      <td>${p.career.hr || 0}</td>
-      <td>${p.career.rbi || 0}</td>
-      <td>${p.career.k || 0}</td>
-      <td>${era}</td>
-      <td>${whip}</td>
-    </tr>`;
-  }).join('');
+  if (isPitView) {
+    tbody.innerHTML = players.filter(p => p.type === 'pitcher').map(p => {
+      const era  = (p.career.ip || 0) > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
+      const whip = (p.career.ip || 0) > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
+      const abF  = (p.career.bf || 0) - (p.career.bb || 0) - (p.career.hbp || 0);
+      const oba  = abF > 0 ? (p.career.h / abF).toFixed(3) : '—';
+      return `<tr onclick="openCardById('${p.id}')">
+        <td><b>${p.name}</b></td>
+        <td>${p.teamName || ''}</td>
+        <td><span class="pos-badge">${p.pos}</span></td>
+        <td>${p.career.w || 0}</td>
+        <td>${p.career.l || 0}</td>
+        <td>${era}</td>
+        <td>${p.career.gs || 0}</td>
+        <td>${p.career.g || 0}</td>
+        <td>${p.career.cg || 0}</td>
+        <td>${p.career.sho || 0}</td>
+        <td>${p.career.sv || 0}</td>
+        <td>${p.career.svo || 0}</td>
+        <td>${formatIP(p.career.ip)}</td>
+        <td>${p.career.h || 0}</td>
+        <td>${p.career.r || 0}</td>
+        <td>${p.career.er || 0}</td>
+        <td>${p.career.hr || 0}</td>
+        <td>${p.career.hbp || 0}</td>
+        <td>${p.career.bb || 0}</td>
+        <td>${p.career.k || 0}</td>
+        <td>${whip}</td>
+        <td>${oba}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    tbody.innerHTML = players.map(p => {
+      const avg  = p.type === 'batter'  ? battingAvg(p).toFixed(3) : '—';
+      const era  = p.type === 'pitcher' ? ((p.career.ip || 0) > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)) : '—';
+      const whip = p.type === 'pitcher' ? ((p.career.ip || 0) > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—') : '—';
+      return `<tr onclick="openCardById('${p.id}')">
+        <td><b>${p.name}</b></td>
+        <td>${p.teamName || ''}</td>
+        <td><span class="pos-badge">${p.pos}</span></td>
+        <td>${p.career.pa || 0}</td>
+        <td>${avg}</td>
+        <td>${p.career.hr || 0}</td>
+        <td>${p.career.rbi || 0}</td>
+        <td>${p.career.k || 0}</td>
+        <td>${era}</td>
+        <td>${whip}</td>
+      </tr>`;
+    }).join('');
+  }
 }
 
 export function doSort(col) {
@@ -750,9 +957,9 @@ export function clearSeason() {
   LEAGUE.teams.forEach(t => {
     [...t.batters, ...t.pitchers].forEach(p => {
       if (p.type === 'batter') {
-        p.career = { pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 };
+        p.career = { g:0, pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 };
       } else {
-        p.career = { g:0, ip:0, h:0, er:0, bb:0, k:0, w:0, l:0, sv:0 };
+        p.career = { g:0, gs:0, cg:0, sho:0, ip:0, h:0, r:0, er:0, bb:0, k:0, w:0, l:0, sv:0, svo:0, hr:0, hbp:0, bf:0 };
       }
     });
     t.w = 0; t.l = 0; t.runsFor = 0; t.runsAgainst = 0;
@@ -768,12 +975,12 @@ export function advanceSeason() {
     [...t.batters, ...t.pitchers].forEach(p => {
       if (p.type === 'batter') {
         const g = p.career;
-        if (g.pa > 0) p.seasons.push({ year:LEAGUE.season, pa:g.pa, ab:g.ab, h:g.h, hr:g.hr, rbi:g.rbi, r:g.r, bb:g.bb, k:g.k, doubles:g.doubles, triples:g.triples });
-        p.career = { pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 };
+        if (g.pa > 0) p.seasons.push({ year:LEAGUE.season, g:g.g||0, pa:g.pa, ab:g.ab, h:g.h, hr:g.hr, rbi:g.rbi, r:g.r, bb:g.bb, k:g.k, doubles:g.doubles||0, triples:g.triples||0, sb:g.sb||0, cs:g.cs||0 });
+        p.career = { g:0, pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 };
       } else {
         const g = p.career;
-        if (g.ip > 0) p.seasons.push({ year:LEAGUE.season, g:g.g, ip:g.ip, h:g.h, er:g.er, bb:g.bb, k:g.k, w:g.w, l:g.l });
-        p.career = { g:0, ip:0, h:0, er:0, bb:0, k:0, w:0, l:0, sv:0 };
+        if (g.ip > 0) p.seasons.push({ year:LEAGUE.season, g:g.g, gs:g.gs||0, cg:g.cg||0, sho:g.sho||0, ip:g.ip, h:g.h, r:g.r||0, er:g.er, bb:g.bb, k:g.k, w:g.w, l:g.l, sv:g.sv||0, svo:g.svo||0, hr:g.hr||0, hbp:g.hbp||0, bf:g.bf||0 });
+        p.career = { g:0, gs:0, cg:0, sho:0, ip:0, h:0, r:0, er:0, bb:0, k:0, w:0, l:0, sv:0, svo:0, hr:0, hbp:0, bf:0 };
       }
     });
     t.w = 0; t.l = 0; t.runsFor = 0; t.runsAgainst = 0;
