@@ -51,12 +51,13 @@ export function renderHome() {
   const topHR  = allBatters().sort((a,b) => b.career.hr - a.career.hr)[0];
   const topAVG = allBatters().filter(p => p.career.ab > 50).sort((a,b) => battingAvg(b) - battingAvg(a))[0];
   const topK   = allPitchers().sort((a,b) => b.career.k - a.career.k)[0];
+  const playerTeam = p => p ? (LEAGUE.teams.find(t => t.batters.includes(p) || t.pitchers.includes(p))?.name ?? '') : '';
   const scEl = document.getElementById('league-stat-cards');
   scEl.innerHTML = `
     <div class="stat-card"><div class="sc-val">${LEAGUE.gamesPlayed}</div><div class="sc-lbl">Games Played</div></div>
-    <div class="stat-card"><div class="sc-val">${topHR  ? topHR.career.hr            : '—'}</div><div class="sc-lbl">HR Leader · ${topHR  ? topHR.name  : '—'}</div></div>
-    <div class="stat-card"><div class="sc-val">${topAVG ? battingAvg(topAVG).toFixed(3) : '—'}</div><div class="sc-lbl">AVG Leader · ${topAVG ? topAVG.name : '—'}</div></div>
-    <div class="stat-card"><div class="sc-val">${topK   ? topK.career.k               : '—'}</div><div class="sc-lbl">K Leader · ${topK   ? topK.name   : '—'}</div></div>
+    <div class="stat-card"><div class="sc-val">${topHR  ? topHR.career.hr            : '—'}</div><div class="sc-lbl">HR Leader · ${topHR  ? topHR.name  : '—'}<br><span style="font-weight:400;opacity:0.7">${playerTeam(topHR)}</span></div></div>
+    <div class="stat-card"><div class="sc-val">${topAVG ? battingAvg(topAVG).toFixed(3) : '—'}</div><div class="sc-lbl">AVG Leader · ${topAVG ? topAVG.name : '—'}<br><span style="font-weight:400;opacity:0.7">${playerTeam(topAVG)}</span></div></div>
+    <div class="stat-card"><div class="sc-val">${topK   ? topK.career.k               : '—'}</div><div class="sc-lbl">K Leader · ${topK   ? topK.name   : '—'}<br><span style="font-weight:400;opacity:0.7">${playerTeam(topK)}</span></div></div>
   `;
 
   // Standings by division — two columns (AL | NL), fixed East→Central→West order
@@ -180,16 +181,14 @@ function renderRosterTableContent() {
 
   // Header: logo + team name + edit button
   const titleEl = document.getElementById('roster-table-title');
-  if (titleEl) titleEl.innerHTML = `${teamLogoHtml(t, 24)} <span id="roster-team-name">${t.name}</span>` +
-    `<button onclick="editTeamName()" style="margin-left:10px;font-family:'IBM Plex Mono',monospace;font-size:0.55rem;padding:2px 8px;border:1px solid var(--line);background:transparent;cursor:pointer;border-radius:2px;vertical-align:middle">Edit Name</button>`;
+  if (titleEl) {
+    const logoClick = `<label title="Upload logo" style="cursor:pointer;display:inline-flex;align-items:center">${teamLogoHtml(t, 24)}<input type="file" accept="image/*" onchange="uploadTeamLogo(this)" style="display:none"></label>`;
+    titleEl.innerHTML = `${logoClick} <span id="roster-team-name" onclick="editTeamName()" title="Click to rename" style="cursor:pointer;border-bottom:1px dashed transparent;transition:border-color 0.15s" onmouseover="this.style.borderBottomColor='var(--ink)'" onmouseout="this.style.borderBottomColor='transparent'">${t.name}</span>`;
+  }
 
-  // Meta row: division · record · logo control
   const metaEl = document.getElementById('roster-header-meta');
   if (metaEl) {
-    const logoCtrl = t.logo
-      ? `<span class="logo-text-link" onclick="removeTeamLogo()">Change Logo</span>`
-      : `<label class="logo-text-link" style="cursor:pointer">Upload Logo<input type="file" accept="image/*" onchange="uploadTeamLogo(this)" style="display:none"></label>`;
-    metaEl.innerHTML = `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted)">${t.division} · ${t.w}W ${t.l}L · ${rosterTab === 'bat' ? 'Batting Lineup' : 'Pitching Staff'}</span><span style="color:var(--muted);margin:0 6px">·</span>${logoCtrl}`;
+    metaEl.innerHTML = `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted)">${t.division} · ${t.w}W ${t.l}L · ${rosterTab === 'bat' ? 'Batting Lineup' : 'Pitching Staff'}</span>`;
   }
 
   if (rosterTab === 'bat') renderBatterTableContent();
@@ -220,6 +219,7 @@ function renderBatterTableContent() {
         if (batTableSort.col === 'obp') return obpCalc(b);
         if (batTableSort.col === 'slg') return slgCalc(b);
         if (batTableSort.col === 'ops') return obpCalc(b) + slgCalc(b);
+        if (batTableSort.col === '1b')  return (b.career.h||0) - (b.career.hr||0) - (b.career.doubles||0) - (b.career.triples||0);
         if (batTableSort.col === '2b')  return b.career.doubles || 0;
         if (batTableSort.col === '3b')  return b.career.triples || 0;
         return b.career[batTableSort.col] || 0;
@@ -239,8 +239,10 @@ function renderBatterTableContent() {
       <td style="text-align:left"><b>${b.name}</b></td>
       <td style="text-align:left"><span class="pos-badge">${b.pos}</span></td>
       <td>${b.career.g||0}</td><td>${b.career.ab||0}</td><td>${b.career.r||0}</td><td>${b.career.h||0}</td>
+      <td>${(b.career.h||0)-(b.career.hr||0)-(b.career.doubles||0)-(b.career.triples||0)}</td>
       <td>${b.career.doubles||0}</td><td>${b.career.triples||0}</td><td>${b.career.hr||0}</td><td>${b.career.rbi||0}</td>
       <td>${b.career.bb||0}</td><td>${b.career.k||0}</td><td>${b.career.sb||0}</td><td>${b.career.cs||0}</td>
+      <td>${b.career.sf||0}</td>
       <td>${avg}</td><td>${obp}</td><td>${slg}</td><td>${ops}</td>
       <td><button onclick="event.stopPropagation();deletePlayerFromTable('${b.id}')" style="background:transparent;border:1px solid #c00;color:#c00;border-radius:2px;padding:2px 6px;cursor:pointer;font-size:0.65rem">✕</button></td>
     </tr>`;
@@ -256,8 +258,9 @@ function renderBatterTableContent() {
           <th style="text-align:left">Player</th>
           <th style="text-align:left">Pos${hintHtml}</th>
           ${th('g','G')}${th('ab','AB')}${th('r','R')}${th('h','H')}
-          ${th('2b','2B')}${th('3b','3B')}${th('hr','HR')}${th('rbi','RBI')}
+          ${th('1b','1B')}${th('2b','2B')}${th('3b','3B')}${th('hr','HR')}${th('rbi','RBI')}
           ${th('bb','BB')}${th('k','K')}${th('sb','SB')}${th('cs','CS')}
+          ${th('sf','SF')}
           ${th('avg','AVG')}${th('obp','OBP')}${th('slg','SLG')}${th('ops','OPS')}
           <th></th>
         </tr></thead>
@@ -294,10 +297,10 @@ function renderBatterTableContent() {
 
 export function sortPitcherTable(col) {
   if (pitTableSort.col === col) {
-    const defaultDir = (col === 'era' || col === 'whip' || col === 'oba') ? 1 : -1;
+    const defaultDir = (col === 'era' || col === 'whip' || col === 'baa') ? 1 : -1;
     if (pitTableSort.dir !== defaultDir) pitTableSort = { col: null, dir: 1 }; // 3rd click → reset
     else pitTableSort.dir *= -1;
-  } else { pitTableSort.col = col; pitTableSort.dir = (col === 'era' || col === 'whip' || col === 'oba') ? 1 : -1; }
+  } else { pitTableSort.col = col; pitTableSort.dir = (col === 'era' || col === 'whip' || col === 'baa') ? 1 : -1; }
   renderRosterTableContent();
 }
 
@@ -316,7 +319,7 @@ function renderPitcherTableContent() {
         const p = x.p;
         if (pitTableSort.col === 'era')  return p.career.ip > 0 ? (p.career.er / p.career.ip) * 9 : p.era;
         if (pitTableSort.col === 'whip') return p.career.ip > 0 ? (p.career.bb + p.career.h) / p.career.ip : 99;
-        if (pitTableSort.col === 'oba')  { const ab = (p.career.bf||0)-(p.career.bb||0)-(p.career.hbp||0); return ab > 0 ? p.career.h / ab : 1; }
+        if (pitTableSort.col === 'baa')  { const ab = (p.career.bf||0)-(p.career.bb||0)-(p.career.hbp||0); return ab > 0 ? p.career.h / ab : 1; }
         if (pitTableSort.col === 'k9')   return p.career.ip > 0 ? (p.career.k / p.career.ip) * 9 : 0;
         if (pitTableSort.col === 'ip')   return p.career.ip || 0;
         return p.career[pitTableSort.col] || 0;
@@ -330,7 +333,7 @@ function renderPitcherTableContent() {
     const era   = p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
     const whip  = p.career.ip > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
     const abF   = (p.career.bf || 0) - (p.career.bb || 0) - (p.career.hbp || 0);
-    const oba   = abF > 0 ? (p.career.h / abF).toFixed(3) : '—';
+    const baa   = abF > 0 ? (p.career.h / abF).toFixed(3) : '—';
     const k9    = p.career.ip > 0 ? ((p.career.k / p.career.ip) * 9).toFixed(1) : '—';
     return `<tr data-player-id="${p.id}" data-pit-idx="${idx}"${unsorted ? ' draggable="true"' : ''} style="cursor:pointer">
       <td style="text-align:left"><b>${p.name}</b></td>
@@ -341,7 +344,7 @@ function renderPitcherTableContent() {
       <td>${p.career.sv||0}</td><td>${p.career.svo||0}</td>
       <td>${p.career.h||0}</td><td>${p.career.r||0}</td><td>${p.career.er||0}</td>
       <td>${p.career.hr||0}</td><td>${p.career.hbp||0}</td>
-      <td>${k9}</td><td>${oba}</td>
+      <td>${k9}</td><td>${baa}</td>
       <td><button onclick="event.stopPropagation();deletePlayerFromTable('${p.id}')" style="background:transparent;border:1px solid #c00;color:#c00;border-radius:2px;padding:2px 6px;cursor:pointer;font-size:0.65rem">✕</button></td>
     </tr>`;
   };
@@ -371,7 +374,7 @@ function renderPitcherTableContent() {
           ${th('g','G')}${th('gs','GS')}${th('cg','CG')}${th('sho','SHO')}
           ${th('ip','IP')}${th('k','K')}${th('bb','BB')}${th('sv','SV')}${th('svo','SVO')}
           ${th('h','H')}${th('r','R')}${th('er','ER')}${th('hr','HR')}${th('hbp','HBP')}
-          ${th('k9','K/9')}${th('oba','OBA')}
+          ${th('k9','K/9')}${th('baa','BAA')}
           <th></th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -532,7 +535,7 @@ function renderCard(t, p) {
   // Ratings (0-100 scale)
   const ratings = isBatter ? [
     { l:'Contact', v: Math.round((1 - (p.kPct / 0.40)) * 100) },
-    { l:'Power',   v: Math.round((p.hrPct / 0.08) * 100) },
+    { l:'Power',   v: Math.round((p.hrPct / 0.112) * 100) },
     { l:'Patience',v: Math.round((p.bbPct / 0.18) * 100) },
     { l:'Speed',   v: Math.round((p.sbRate / 0.15) * 100) },
   ] : [
@@ -588,14 +591,15 @@ function renderCard(t, p) {
       <div style="overflow-x:auto">
         <table class="season-log-table" style="min-width:700px">
           <thead><tr>
-            <th>G</th><th>AB</th><th>R</th><th>H</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th>
-            <th>BB</th><th>K</th><th>SB</th><th>CS</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th>
+            <th>G</th><th>AB</th><th>R</th><th>H</th><th>1B</th><th>2B</th><th>3B</th><th>HR</th><th>RBI</th>
+            <th>BB</th><th>K</th><th>SB</th><th>CS</th><th>SF</th><th>AVG</th><th>OBP</th><th>SLG</th><th>OPS</th>
           </tr></thead>
           <tbody><tr>
             <td>${p.career.g || 0}</td>
             <td>${p.career.ab || 0}</td>
             <td>${p.career.r || 0}</td>
             <td>${p.career.h || 0}</td>
+            <td>${(p.career.h||0)-(p.career.hr||0)-(p.career.doubles||0)-(p.career.triples||0)}</td>
             <td>${p.career.doubles || 0}</td>
             <td>${p.career.triples || 0}</td>
             <td>${p.career.hr || 0}</td>
@@ -604,6 +608,7 @@ function renderCard(t, p) {
             <td>${p.career.k || 0}</td>
             <td>${p.career.sb || 0}</td>
             <td>${p.career.cs || 0}</td>
+            <td>${p.career.sf || 0}</td>
             <td>${avg}</td>
             <td>${obp}</td>
             <td>${slg}</td>
@@ -621,7 +626,7 @@ function renderCard(t, p) {
             <th>G</th><th>GS</th><th>CG</th><th>SHO</th>
             <th>IP</th><th>K</th><th>BB</th><th>SV</th>
             <th>H</th><th>R</th><th>ER</th><th>HR</th>
-            <th>HBP</th><th>SVO</th><th>K/9</th><th>OBA</th>
+            <th>HBP</th><th>SVO</th><th>K/9</th><th>BAA</th>
           </tr></thead>
           <tbody><tr>
             <td>${p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)}</td>
@@ -685,7 +690,7 @@ export function updateRating(label, rawVal) {
 
   if (p.type === 'batter') {
     if (label === 'Contact')  p.kPct   = cl((1 - v/100) * 0.40, 0.10, 0.40);
-    if (label === 'Power')    p.hrPct  = cl((v/100) * 0.08, 0.005, 0.08);
+    if (label === 'Power')    p.hrPct  = cl((v/100) * 0.112, 0.005, 0.112);
     if (label === 'Patience') p.bbPct  = cl((v/100) * 0.18, 0.04, 0.18);
     if (label === 'Speed')    p.sbRate = cl((v/100) * 0.15, 0.02, 0.25);
   } else {
@@ -823,7 +828,7 @@ export function renderPlayersTable() {
     else if (sortCol === 'phr')  { av = a.career.hr || 0; bv = b.career.hr || 0; }
     else if (sortCol === 'phbp') { av = a.career.hbp || 0; bv = b.career.hbp || 0; }
     else if (sortCol === 'pbb')  { av = a.career.bb || 0; bv = b.career.bb || 0; }
-    else if (sortCol === 'poba') {
+    else if (sortCol === 'pbaa') {
       const abA = (a.career.bf || 0) - (a.career.bb || 0) - (a.career.hbp || 0);
       const abB = (b.career.bf || 0) - (b.career.bb || 0) - (b.career.hbp || 0);
       av = abA > 0 ? (a.career.h || 0) / abA : 0; bv = abB > 0 ? (b.career.h || 0) / abB : 0;
@@ -856,7 +861,7 @@ export function renderPlayersTable() {
       <th onclick="doSort('pbb')">BB</th>
       <th onclick="doSort('k')">K</th>
       <th onclick="doSort('whip')">WHIP</th>
-      <th onclick="doSort('poba')">OBA</th>
+      <th onclick="doSort('pbaa')">BAA</th>
     `;
   } else {
     thead.innerHTML = `
@@ -890,7 +895,7 @@ export function renderPlayersTable() {
       const era  = (p.career.ip || 0) > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
       const whip = (p.career.ip || 0) > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
       const abF  = (p.career.bf || 0) - (p.career.bb || 0) - (p.career.hbp || 0);
-      const oba  = abF > 0 ? (p.career.h / abF).toFixed(3) : '—';
+      const baa  = abF > 0 ? (p.career.h / abF).toFixed(3) : '—';
       return `<tr onclick="openCardById('${p.id}')">
         <td><b>${p.name}</b></td>
         <td>${p.teamName || ''}</td>
@@ -913,7 +918,7 @@ export function renderPlayersTable() {
         <td>${p.career.bb || 0}</td>
         <td>${p.career.k || 0}</td>
         <td>${whip}</td>
-        <td>${oba}</td>
+        <td>${baa}</td>
       </tr>`;
     }).join('');
   } else {
@@ -1032,9 +1037,12 @@ function renderScheduleView(cont) {
       saved.forEach((s, i) => {
         const playedCount = s.games.filter(g => g.played).length;
         const isCurrent = LEAGUE.scheduleName === s.name && sched.length === s.games.length;
-        html += `<div class="sched-saved-item${isCurrent ? ' current' : ''}" onclick="schedLoadPick(${i})">
-          <span class="ssi-name">${s.name}</span>
-          <span class="ssi-meta">${s.games.length} games · ${playedCount} played${isCurrent ? ' · active' : ''}</span>
+        html += `<div class="sched-saved-item${isCurrent ? ' current' : ''}" onclick="schedLoadPick(${i})" style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <span class="ssi-name">${s.name}</span>
+            <span class="ssi-meta">${s.games.length} games · ${playedCount} played${isCurrent ? ' · active' : ''}</span>
+          </div>
+          <button onclick="event.stopPropagation();schedDeleteSaved(${i})" style="background:transparent;border:1px solid #c00;color:#c00;border-radius:2px;padding:2px 8px;cursor:pointer;font-size:0.65rem;flex-shrink:0;margin-left:12px">Delete</button>
         </div>`;
       });
     }
@@ -1097,7 +1105,14 @@ function renderScheduleView(cont) {
       const home = LEAGUE.teams.find(t => t.id === g.homeId);
       if (!away || !home) continue;
       const awayWon = (g.awayScore ?? 0) > (g.homeScore ?? 0);
+      let wlBadge = '';
+      if (tf) {
+        const filtIsAway = away.name.toLowerCase() === tf;
+        const filtWon = filtIsAway ? awayWon : !awayWon;
+        wlBadge = `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;font-weight:700;width:14px;flex-shrink:0;color:${filtWon ? '#4a9' : '#c44'}">${filtWon ? 'W' : 'L'}</span>`;
+      }
       rightCol += `<div class="sched-row played sched-clickable" onclick="schedPlayGame(${g._idx})">
+        ${wlBadge}
         <span class="sched-team${awayWon ? ' sched-winner' : ''}">${teamLogoHtml(away, 18)} ${away.name}</span>
         <span class="sched-score">${g.awayScore ?? '—'} – ${g.homeScore ?? '—'}</span>
         <span class="sched-team${!awayWon ? ' sched-winner' : ''}">${teamLogoHtml(home, 18)} ${home.name}</span>
@@ -1275,6 +1290,15 @@ export function schedLoadPick(idx) {
   LEAGUE.scheduleName = saved[idx].name;
   saveLeague();
   schedShowLoad = false;
+  renderSchedule();
+}
+
+export function schedDeleteSaved(idx) {
+  const saved = LEAGUE.savedSchedules || [];
+  if (!saved[idx]) return;
+  if (!confirm(`Delete "${saved[idx].name}"?`)) return;
+  LEAGUE.savedSchedules.splice(idx, 1);
+  saveLeague();
   renderSchedule();
 }
 

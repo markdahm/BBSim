@@ -18,6 +18,7 @@ let homeTeamId = null;
 let gLineupView = 0;
 let simMode = 'schedule';    // 'expo' | 'schedule'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
+let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
 
 // ====================================================================
 // SIMULATE PAGE ENTRY POINT
@@ -93,8 +94,9 @@ export function renderSimulate() {
             <span class="sng-at">@</span>
             <span class="sng-team">${teamLogoHtml(home, 32)} ${home.name}</span>
           </div>
-          <div style="margin-top:14px">
+          <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn primary" onclick="startScheduleGame()">Play Ball!</button>
+            <button class="btn" onclick="gAutoMulti()">Auto Multi-Game</button>
           </div>`;
       }
       cont.innerHTML = `
@@ -526,26 +528,32 @@ function simPitch() {
         const eT = [['E4','second baseman boots it'],['E6','shortstop throws wild'],['E5','third baseman bobbles'],['E3','first base drops the throw']];
         const [eCode, eDesc] = eT[ri(eT.length)];
         addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
-        const rbE = G.runs[bi]; advR(1, bi, true); addRunLog(bi, G.runs[bi] - rbE); nextB(bi); break;
+        const rbE = G.runs[bi]; advR(1, bi, true, false); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
       }
       if (G.bases[0] && G.outs < 2 && Math.random() < .28) { addLog(gTag(), `${batter.name} hits into a double play!`, 't-out', 'DP'); showScoreboardMsg('DOUBLE PLAY!', 1800); pushFeed('DP', batter.name); G.bases[0] = false; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); }
       else { const t = ['grounds to short','grounds out to second','bounces to third']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'GO'); showScoreboardMsg('GROUND OUT', 1200); pushFeed('GO', batter.name); nextB(bi); recOut(bi); }
       break;
     }
     case 'fo': {
-      batter.career.ab++; batter.game.ab++; pitcher.game.strikes++;
+      pitcher.game.strikes++;
       if (Math.random() < 0.04) {
+        batter.career.ab++; batter.game.ab++;
         const fi = 1 - bi; G.errors[fi]++;
         const eT = [['E7','left fielder drops it'],['E8','center fielder misjudges it'],['E9','right fielder muffs the catch']];
         const [eCode, eDesc] = eT[ri(eT.length)];
         addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
-        const rbE = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbE); nextB(bi); break;
+        const rbE = G.runs[bi]; advR(1, bi, false, false); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
       }
       const foT = ['flies out to center','pops to right','lofts one to left — caught'];
       const isSF = G.bases[2] && G.outs < 2 && Math.random() < .72;
       addLog(gTag(), `${batter.name} ${foT[ri(foT.length)]}.`, 't-out', isSF ? 'SF' : 'FO');
-      if (isSF) { G.bases[2] = false; scoreRun(bi); addRunLog(bi, 1); batter.game.rbi++; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name); }
-      else { showScoreboardMsg('FLY OUT', 1200); pushFeed('FO', batter.name); }
+      if (isSF) {
+        batter.career.sf = (batter.career.sf || 0) + 1; batter.game.sf = (batter.game.sf || 0) + 1;
+        G.bases[2] = false; scoreRun(bi); addRunLog(bi, 1); batter.game.rbi++; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name);
+      } else {
+        batter.career.ab++; batter.game.ab++;
+        showScoreboardMsg('FLY OUT', 1200); pushFeed('FO', batter.name);
+      }
       nextB(bi); recOut(bi); break;
     }
     case 'lo': {
@@ -555,7 +563,7 @@ function simPitch() {
         const eT = [['E4','second baseman can\'t handle it'],['E6','shortstop drops the liner'],['E5','third baseman juggles it']];
         const [eCode, eDesc] = eT[ri(eT.length)];
         addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
-        const rbE = G.runs[bi]; advR(1, bi, true); addRunLog(bi, G.runs[bi] - rbE); nextB(bi); break;
+        const rbE = G.runs[bi]; advR(1, bi, true, false); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
       }
       const t = ['lines out to short','ropes one to second — OUT','lasers one to center — caught!']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'LO'); showScoreboardMsg('LINE OUT', 1200); pushFeed('LO', batter.name); nextB(bi); recOut(bi); break;
     }
@@ -708,32 +716,49 @@ function flashHome() {
   step();
 }
 
-function scoreRun(bi) {
+function scoreRun(bi, earned = true) {
   G.runs[bi]++;
-  G.scoringLog.push({ bi, away: G.runs[0], home: G.runs[1], awayPitcherIdx: G.away.activePitcher, homePitcherIdx: G.home.activePitcher });
+  G.scoringLog.push({ bi, away: G.runs[0], home: G.runs[1], awayPitcherIdx: G.away.activePitcher, homePitcherIdx: G.home.activePitcher, earned });
   const fldTeam = bi === 0 ? G.home : G.away;
   const curP = fldTeam.pitchers[fldTeam.activePitcher];
-  curP.game.er++;
+  if (earned) curP.game.er++;
   curP.game.r++;
   flashHome();
   if (!G.over && G.half === 1 && G.inning >= 9 && G.runs[1] > G.runs[0]) G.walkoffPending = true;
 }
 
-function addRunLog(bi, n) {
+function addRunLog(bi, n, earned = true) {
   if (n <= 0) return;
-  const s = n === 1 ? '1 run scores' : `${n} runs score`;
+  const label = earned ? 'run' : 'unearned run';
+  const s = n === 1 ? `1 ${label} scores` : `${n} ${label}s score`;
   addLog(gTag(), `${s}. ${G.away.name} ${G.runs[0]}–${G.runs[1]} ${G.home.name}.`, 't-score', 'R');
   const team = bi === 0 ? G.away : G.home;
   const score = `${G.runs[0]}–${G.runs[1]}`;
   pushFeed('R', `${team.name.split(' ').slice(-1)[0]} · ${score}`);
 }
 
-function advR(bases, bi, batterAdv) {
+function advR(bases, bi, batterAdv, earned = true) {
   let scored = 0, nb = [false,false,false];
   if (batterAdv) { for (let b = 2; b >= 0; b--) { if (G.bases[b]) { const d = b + bases; if (d >= 3) scored++; else nb[d] = true; } } const d = bases - 1; if (d >= 3) scored++; else nb[d] = true; }
-  else { nb[0] = true; if (G.bases[0]) { nb[1] = true; if (G.bases[1]) { nb[2] = true; if (G.bases[2]) scored++; } } }
+  else {
+    // Force-advance: batter takes 1st, chain forces runners ahead of the clog.
+    // Any runner NOT in the force chain stays put.
+    nb[0] = true;
+    if (G.bases[0]) {
+      nb[1] = true;
+      if (G.bases[1]) {
+        nb[2] = true;
+        if (G.bases[2]) scored++;
+      } else {
+        if (G.bases[2]) nb[2] = true; // runner on 3rd not forced — stays
+      }
+    } else {
+      if (G.bases[1]) nb[1] = true; // runner on 2nd not forced — stays
+      if (G.bases[2]) nb[2] = true; // runner on 3rd not forced — stays
+    }
+  }
   G.bases = nb;
-  for (let i = 0; i < scored; i++) scoreRun(bi);
+  for (let i = 0; i < scored; i++) scoreRun(bi, earned);
 }
 
 function nextB(bi) { G.lineupIdx[bi] = (G.lineupIdx[bi] + 1) % 9; }
@@ -745,9 +770,21 @@ function recOut(bi) {
   G.outs++; if (G.outs >= 3) endHalf(bi);
 }
 
+function checkCloserSituation(team, teamRuns, oppRuns) {
+  const lead = teamRuns - oppRuns;
+  if (lead < 1 || lead > 3) return;                                      // not a save situation
+  const curP = team.pitchers[team.activePitcher];
+  if (curP && curP.pos === 'CL') return;                                  // closer already in
+  const clIdx = team.pitchers.findIndex((p, i) => p.pos === 'CL' && i !== team.activePitcher && getFatigue(p) < 1);
+  if (clIdx === -1) return;                                               // no fresh CL available
+  addLog(gTag(), `🔒 Save situation — ${team.pitchers[clIdx].name} (CL) enters to close it out.`, 't-manage');
+  team.activePitcher = clIdx;
+  team.pitchers[clIdx].game.entryScore = { away: G.runs[0], home: G.runs[1] };
+}
+
 function checkFatigueAndSub(team) {
   const pitcher = team.pitchers[team.activePitcher];
-  if (!pitcher || getFatigue(pitcher) <= 0.80) return;
+  if (!pitcher || getFatigue(pitcher) <= 0.90) return;
   const avail = (p, i) => i !== team.activePitcher && getFatigue(p) < 1;
   // 1. Prefer RP
   let eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i) && p.pos==='RP');
@@ -775,6 +812,7 @@ function endHalf(bi) {
     addDelimiter('dotted'); addLog(`End ${gOrd(G.inning)}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
     if (G.inning >= 9 && G.runs[1] > G.runs[0]) { endGame(); return; }
     G.half = 1; G.runsStart[1] = G.runs[1];
+    if (G.inning >= 9) checkCloserSituation(G.home, G.runs[1], G.runs[0]);
     if (G.inning >= 6) checkFatigueAndSub(G.away);
   }
   else {
@@ -782,6 +820,7 @@ function endHalf(bi) {
     if (G.inning >= 9 && G.runs[0] !== G.runs[1]) { endGame(); return; }
     G.inning++; G.half = 0; G.runsStart[0] = G.runs[0];
     if (G.inning > G.score[0].length) { G.score[0].push(null); G.score[1].push(null); }
+    if (G.inning >= 9) checkCloserSituation(G.away, G.runs[0], G.runs[1]);
     if (G.inning >= 6) checkFatigueAndSub(G.home);
   }
 }
@@ -895,6 +934,9 @@ function endGame() {
 
   saveLeague();
   G.running = false;
+
+  // Multi-game auto mode — skip overlay, chain to next game
+  if (autoMultiRemaining > 0) { autoMultiNext(); return; }
 
   const el = document.getElementById('g-over'); if (el) el.style.display = 'block';
   setText('g-over-w', w === 'Tie' ? 'Final — Tie' : `${w} Win!`);
@@ -1022,6 +1064,40 @@ export function gAutoGame() {
 }
 
 
+export function gAutoMulti() {
+  const sched = LEAGUE.schedule || [];
+  const unplayed = sched.filter(g => !g.played).length;
+  if (unplayed === 0) { alert('No unplayed games remaining.'); return; }
+  const input = prompt(`How many games to auto-play? (${unplayed} remaining)`);
+  const n = parseInt(input);
+  if (!n || n < 1) return;
+  autoMultiRemaining = Math.min(n, unplayed);
+  autoMultiNext();
+}
+
+function autoMultiNext() {
+  if (autoMultiRemaining <= 0) {
+    autoMultiRemaining = 0;
+    G.running = false;
+    renderSimulate();
+    return;
+  }
+  const sched = LEAGUE.schedule || [];
+  const idx = sched.findIndex(g => !g.played);
+  if (idx === -1) { autoMultiRemaining = 0; G.running = false; renderSimulate(); return; }
+  autoMultiRemaining--;
+  schedGameIdx = idx;
+  simMode = 'schedule';
+  startGame(sched[idx].awayId, sched[idx].homeId);
+  function step() {
+    if (G.over) return;  // endGame() will call autoMultiNext()
+    if (pending) { autoResolveDec(); setTimeout(step, 0); return; }
+    simPitch();
+    if (!G.over) setTimeout(step, 0);
+  }
+  step();
+}
+
 export function gSetDelay(v) {
   pitchDelay = parseInt(v);
   const bar = document.getElementById('g-delay-bar');
@@ -1038,7 +1114,7 @@ function pushFeed(icon, label) {
 
 function getFatigue(pitcher) {
   const pitches = pitcher.game?.pitches || 0;
-  if (pitcher.pos === 'SP' || pitcher.pos === 'P') return Math.min(1, pitches * 4 / 550); // ~3.6% per 5 pitches → auto-sub at ~110 pitches
+  if (pitcher.pos === 'SP' || pitcher.pos === 'P') return Math.min(1, pitches / 95); // 100% fatigue at ~95 pitches
   return Math.min(1, pitches / 50);
 }
 

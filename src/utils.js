@@ -27,7 +27,7 @@ export function mkEl(tag, cls, txt) { const e = document.createElement(tag); e.c
 export function battingAvg(p) { return p.career.ab > 0 ? p.career.h / p.career.ab : 0; }
 export function obpCalc(p) {
   const pa = p.career.pa || 1;
-  return (p.career.h + p.career.bb) / pa;
+  return (p.career.h + p.career.bb + (p.career.hbp || 0)) / pa;
 }
 export function slgCalc(p) {
   const ab = p.career.ab || 1;

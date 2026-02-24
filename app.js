@@ -12,9 +12,9 @@ import {
   openCard, openCardById, closeCard, closeCardDirect, prevCard, nextCard,
   updatePlayerName, updateRating, updateRatingFromBar, setFilter, setTeamFilter, doSort, renderPlayersTable,
   schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
-  schedLoadOpen, schedLoadPick, schedSetTeamFilter,
+  schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
 } from './src/views.js';
-import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gShowLineup, resolveDec, newMatchup, gSetDelay } from './src/game.js';
+import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gShowLineup, resolveDec, newMatchup, gSetDelay } from './src/game.js';
 
 // ── Expose functions referenced in HTML onclick attributes ──
 Object.assign(window, {
@@ -30,11 +30,11 @@ Object.assign(window, {
   updatePlayerName, updateRating, updateRatingFromBar,
   setFilter, setTeamFilter, doSort, renderPlayersTable,
   schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
-  schedLoadOpen, schedLoadPick, schedSetTeamFilter,
+  schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
   // Roster import / export
   importRosters, exportLeague,
   // Game engine
-  startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gShowLineup, resolveDec, newMatchup, gSetDelay,
+  startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gShowLineup, resolveDec, newMatchup, gSetDelay,
 });
 
 // ── Boot ──
