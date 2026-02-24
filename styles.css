@@ -286,10 +286,17 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .runners-bar { padding:10px 16px 14px; border:1px solid var(--line); border-radius:4px; background:var(--panel); }
 .field-row { display:flex; gap:14px; align-items:flex-start; }
 .field-scoreboard { width:742px; height:273px; flex-shrink:0; background:url('scoreboard.png') 0 0/auto no-repeat; border-radius:3px; overflow:hidden; position:relative; }
+.sb-left-panel { position:absolute; top:6px; left:8px; display:flex; flex-direction:column; align-items:center; gap:3px; pointer-events:none; }
+.sb-inning { font-family:'Bebas Neue',sans-serif; font-size:1rem; color:#ffcc00; letter-spacing:3px; white-space:nowrap; }
+.sb-feed { display:flex; flex-direction:column; gap:2px; align-self:stretch; }
+.sb-feed-row { display:flex; align-items:center; gap:4px; background:rgba(0,0,0,0.52); border-radius:2px; padding:1px 5px; }
+.sb-feed-summary { background:rgba(0,0,0,0.72); border-top:1px solid rgba(255,204,0,0.4); margin-top:1px; }
+.sb-feed-icon { font-family:'Bebas Neue',sans-serif; font-size:0.65rem; font-weight:700; min-width:22px; }
+.sb-feed-label { font-family:'IBM Plex Mono',monospace; font-size:0.6rem; color:#e8e8e8; white-space:nowrap; }
 .sb-msg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
 .sb-msg-text { font-family:'Bebas Neue',sans-serif; font-size:3rem; color:#ffcc00; text-shadow:0 0 18px rgba(255,204,0,0.95), 0 0 40px rgba(255,140,0,0.6); letter-spacing:6px; text-align:center; text-transform:uppercase; }
 .sb-final { position:absolute; inset:0; pointer-events:none; }
-.sb-batting { display:flex; width:100%; height:100%; padding:37px 14px 12px; gap:0; }
+.sb-batting { display:flex; width:100%; height:100%; padding:37px 14px 12px 160px; gap:0; }
 .sbt-half { flex:1; display:flex; flex-direction:column; gap:6px; padding:0 10px; }
 .sbt-half:first-child { border-right:1px solid rgba(255,204,0,0.25); }
 .sbt-team { font-family:'Oswald',sans-serif; font-size:1rem; font-weight:700; letter-spacing:2px; color:#ffcc00; text-transform:uppercase; margin-bottom:2px; }
@@ -399,6 +406,11 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .pf-winner { background:#fffdf5; border-top:3px solid var(--gold); }
 .pf-team { font-family:'IBM Plex Mono',monospace; font-size:0.56rem; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
 .pf-name { font-family:'Oswald',sans-serif; font-size:1.1rem; font-weight:600; }
+.pf-dec { font-family:'IBM Plex Mono',monospace; font-size:0.65rem; font-weight:400; color:var(--muted); margin-left:4px; }
+.pf-relievers { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:4px; }
+.pf-reliever-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pf-rel-name { font-family:'Oswald',sans-serif; font-size:0.85rem; font-weight:500; flex:1; min-width:80px; }
+.pf-rel-stat { font-family:'IBM Plex Mono',monospace; font-size:0.65rem; color:var(--muted); white-space:nowrap; }
 .pf-stats { display:flex; gap:16px; flex-wrap:wrap; margin-top:4px; }
 .pf-stat { display:flex; flex-direction:column; align-items:center; min-width:42px; }
 .pf-lbl { font-family:'Oswald',sans-serif; font-size:0.58rem; font-weight:500; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
