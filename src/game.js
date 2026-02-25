@@ -16,9 +16,10 @@ let awayTeamId = null;
 let pitchDelay = 0;
 let homeTeamId = null;
 let gLineupView = 0;
-let simMode = 'schedule';    // 'expo' | 'schedule'
+let simMode = 'schedule';    // 'expo' | 'schedule' | 'playoffs'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
+let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
 
 // ====================================================================
 // SIMULATE PAGE ENTRY POINT
@@ -932,6 +933,29 @@ function endGame() {
     schedGameIdx = -1;
   }
 
+  // Playoff series advancement
+  if (simMode === 'playoffs' && LEAGUE.playoffs?.activeSeriesIdx != null) {
+    autoMultiRemaining = 0; // prevent interference
+    const sIdx = LEAGUE.playoffs.activeSeriesIdx;
+    const series = LEAGUE.playoffs.series[sIdx];
+    const gameNum = series.games.length + 1;
+    series.games.push({ gameNum, homeId: homeTeamId, awayId: awayTeamId, homeScore: G.runs[1], awayScore: G.runs[0] });
+    const winnerId = G.runs[0] > G.runs[1] ? awayTeamId : homeTeamId;
+    if (winnerId === series.higherSeedId) series.higherSeedWins++;
+    else series.lowerSeedWins++;
+    const winsNeeded = Math.ceil(series.seriesLength / 2);
+    if (series.higherSeedWins >= winsNeeded || series.lowerSeedWins >= winsNeeded) {
+      series.winner = winnerId;
+      LEAGUE.playoffs.activeSeriesIdx = null;
+      advancePlayoffBracket(series);
+    }
+    saveLeague();
+    G.running = false;
+    if (playoffSeriesAutoRemaining > 0) { playoffAutoNext(); return; }
+    window.nav('playoffs');
+    return;
+  }
+
   saveLeague();
   G.running = false;
 
@@ -1146,4 +1170,176 @@ function addDelimiter(style) {
   const l = document.getElementById('g-log'); if (!l) return;
   const e = document.createElement('div'); e.className = `log-delimiter log-delimiter-${style}`;
   l.insertBefore(e, l.firstChild);
+}
+
+// ====================================================================
+// PLAYOFF HELPERS
+// ====================================================================
+// Home/Away patterns per series length (index = game number - 1, H=home, A=away)
+const PLAYOFF_PATTERNS = {
+  3: ['H','H','A'],
+  5: ['H','H','A','A','H'],
+  7: ['H','H','A','A','H','A','H'],
+};
+
+function getGameHomeAway(series, gameNum) {
+  const pattern = PLAYOFF_PATTERNS[series.seriesLength] || PLAYOFF_PATTERNS[7];
+  const slot = pattern[(gameNum - 1) % pattern.length];
+  const homeId = slot === 'H' ? series.higherSeedId : series.lowerSeedId;
+  const awayId = slot === 'H' ? series.lowerSeedId  : series.higherSeedId;
+  return { homeId, awayId };
+}
+
+function getTeamWinPctById(teamId) {
+  const t = LEAGUE.teams.find(t => t.id === teamId);
+  if (!t) return 0;
+  return t.w / ((t.w + t.l) || 1);
+}
+
+function advancePlayoffBracket(series) {
+  const winner = series.winner;
+  if (winner == null) return;
+  const p = LEAGUE.playoffs;
+
+  // Wire winner into next series
+  if (series.nextSeriesId) {
+    const nextSeries = p.series.find(s => s.id === series.nextSeriesId);
+    if (nextSeries) {
+      if (series.nextSeriesSlot === 'higher') {
+        nextSeries.higherSeedId = winner;
+      } else if (series.nextSeriesSlot === 'lower') {
+        nextSeries.lowerSeedId = winner;
+      } else {
+        // CS and WS: determine higher/lower by regular season win%
+        // For CS: two DS winners compete; for WS: two CS winners compete
+        if (nextSeries.higherSeedId === null && nextSeries.lowerSeedId === null) {
+          nextSeries.higherSeedId = winner;
+        } else if (nextSeries.higherSeedId === null) {
+          // Compare with existing team
+          const existingPct = getTeamWinPctById(nextSeries.lowerSeedId);
+          const winnerPct   = getTeamWinPctById(winner);
+          if (winnerPct >= existingPct) {
+            nextSeries.higherSeedId = winner;
+          } else {
+            nextSeries.higherSeedId = winner;
+            // swap: existing lower becomes lower, winner becomes higher? No — higher = better record
+            // winner has lower pct, so existing lowerSeedId should be higher
+            nextSeries.higherSeedId = nextSeries.lowerSeedId;
+            nextSeries.lowerSeedId  = winner;
+          }
+        } else if (nextSeries.lowerSeedId === null) {
+          const existingPct = getTeamWinPctById(nextSeries.higherSeedId);
+          const winnerPct   = getTeamWinPctById(winner);
+          if (winnerPct > existingPct) {
+            // winner has better record — becomes new higher seed
+            nextSeries.lowerSeedId  = nextSeries.higherSeedId;
+            nextSeries.higherSeedId = winner;
+          } else {
+            nextSeries.lowerSeedId = winner;
+          }
+        }
+      }
+    }
+  }
+
+  // Check if current round is complete — advance round
+  const roundOrder = ['wildCard', 'divSeries', 'champSeries', 'worldSeries'];
+  const currentRound = p.round;
+  const roundSeries = p.series.filter(s => s.round === currentRound);
+  if (roundSeries.every(s => s.winner != null)) {
+    const nextRoundIdx = roundOrder.indexOf(currentRound) + 1;
+    if (nextRoundIdx < roundOrder.length) {
+      p.round = roundOrder[nextRoundIdx];
+    } else {
+      p.round = 'complete';
+    }
+  }
+}
+
+function playoffAutoNext() {
+  if (!LEAGUE.playoffs) return;
+  const p = LEAGUE.playoffs;
+
+  // Resolve active series index
+  let sIdx = p.activeSeriesIdx;
+  if (sIdx === null || sIdx === undefined) {
+    // Series just finished — find next unfinished in current round (for autoAll)
+    if (!p._autoAll) { playoffSeriesAutoRemaining = 0; window.nav('playoffs'); return; }
+    const idx = p.series.findIndex(s => s.round === p.round && s.winner == null && s.higherSeedId != null && s.lowerSeedId != null);
+    if (idx === -1) { playoffSeriesAutoRemaining = 0; p._autoAll = false; saveLeague(); window.nav('playoffs'); return; }
+    sIdx = idx;
+    p.activeSeriesIdx = sIdx;
+    // Reset counter for the new series
+    playoffSeriesAutoRemaining = p.series[sIdx].seriesLength;
+  }
+
+  const series = p.series[sIdx];
+  if (!series || series.winner != null) {
+    playoffSeriesAutoRemaining = 0;
+    p.activeSeriesIdx = null;
+    saveLeague();
+    window.nav('playoffs');
+    return;
+  }
+
+  if (playoffSeriesAutoRemaining <= 0) {
+    p.activeSeriesIdx = null;
+    saveLeague();
+    window.nav('playoffs');
+    return;
+  }
+  playoffSeriesAutoRemaining--;
+
+  const gameNum = series.games.length + 1;
+  const { homeId, awayId } = getGameHomeAway(series, gameNum);
+  simMode = 'playoffs';
+  startGame(awayId, homeId);
+  function step() {
+    if (G.over) return;
+    if (pending) { autoResolveDec(); setTimeout(step, 0); return; }
+    simPitch();
+    if (!G.over) setTimeout(step, 0);
+  }
+  step();
+}
+
+export function playoffPlayNext(seriesIdx) {
+  if (!LEAGUE.playoffs) return;
+  const p = LEAGUE.playoffs;
+  const series = p.series[seriesIdx];
+  if (!series || series.winner != null || series.higherSeedId == null || series.lowerSeedId == null) return;
+  p.activeSeriesIdx = seriesIdx;
+  p._autoAll = false;
+  playoffSeriesAutoRemaining = 0;
+  saveLeague();
+  const gameNum = series.games.length + 1;
+  const { homeId, awayId } = getGameHomeAway(series, gameNum);
+  simMode = 'playoffs';
+  window.nav('simulate');
+  startGame(awayId, homeId);
+}
+
+export function playoffAutoSeries(seriesIdx) {
+  if (!LEAGUE.playoffs) return;
+  const p = LEAGUE.playoffs;
+  const series = p.series[seriesIdx];
+  if (!series || series.winner != null || series.higherSeedId == null || series.lowerSeedId == null) return;
+  p.activeSeriesIdx = seriesIdx;
+  p._autoAll = false;
+  playoffSeriesAutoRemaining = series.seriesLength;
+  saveLeague();
+  playoffAutoNext();
+}
+
+export function playoffAutoAll() {
+  if (!LEAGUE.playoffs) return;
+  const p = LEAGUE.playoffs;
+  if (p.round === 'complete') { window.nav('playoffs'); return; }
+  const nextIdx = p.series.findIndex(s => s.round === p.round && s.winner == null && s.higherSeedId != null && s.lowerSeedId != null);
+  if (nextIdx === -1) { window.nav('playoffs'); return; }
+  p.activeSeriesIdx = nextIdx;
+  p._autoAll = true;
+  playoffSeriesAutoRemaining = p.series[nextIdx].seriesLength;
+  saveLeague();
+  playoffAutoNext();
 }

@@ -13,8 +13,9 @@ import {
   updatePlayerName, updateRating, updateRatingFromBar, setFilter, setTeamFilter, doSort, renderPlayersTable,
   schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
   schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
+  generatePlayoffs, renderPlayoffs, resetPlayoffs,
 } from './src/views.js';
-import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gShowLineup, resolveDec, newMatchup, gSetDelay } from './src/game.js';
+import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gShowLineup, resolveDec, newMatchup, gSetDelay, playoffPlayNext, playoffAutoSeries, playoffAutoAll } from './src/game.js';
 
 // ── Expose functions referenced in HTML onclick attributes ──
 Object.assign(window, {
@@ -31,10 +32,12 @@ Object.assign(window, {
   setFilter, setTeamFilter, doSort, renderPlayersTable,
   schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
   schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
+  generatePlayoffs, renderPlayoffs, resetPlayoffs,
   // Roster import / export
   importRosters, exportLeague,
   // Game engine
   startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gShowLineup, resolveDec, newMatchup, gSetDelay,
+  playoffPlayNext, playoffAutoSeries, playoffAutoAll,
 });
 
 // ── Boot ──

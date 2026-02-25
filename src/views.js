@@ -23,7 +23,7 @@ let schedOutsideFirst = null;     // first-selected div in outside mode
 // ====================================================================
 // NAVIGATION
 // ====================================================================
-const PAGES = ['home','players','simulate','schedule'];
+const PAGES = ['home','players','simulate','schedule','playoffs'];
 export function nav(page) {
   PAGES.forEach(p => {
     document.getElementById(`page-${p}`).classList.remove('active');
@@ -37,6 +37,7 @@ export function nav(page) {
   if (page === 'players') renderPlayersTable();
   if (page === 'simulate') renderSimulate();
   if (page === 'schedule') renderSchedule();
+  if (page === 'playoffs') renderPlayoffs();
 }
 
 // ====================================================================
@@ -791,6 +792,8 @@ export function renderPlayersTable() {
   if (playerFilter !== 'BAT') {
     allPitchers().forEach(p => { if (matchesTeam(p) && (!search || p.name.toLowerCase().includes(search) || p.teamName.toLowerCase().includes(search))) players.push(p); });
   }
+  // Omit players with no accrued stats
+  players = players.filter(p => p.type === 'batter' ? (p.career.pa || 0) > 0 : (p.career.g || 0) > 0);
 
   const isPitView = playerFilter === 'PIT';
   const formatIP  = ip => { const o = Math.round((ip || 0) * 3); return `${Math.floor(o / 3)}.${o % 3}`; };
@@ -1405,4 +1408,328 @@ export function saveLeagueName() {
 export function cancelLeagueName(original) {
   const titleEl = document.getElementById('league-title');
   if (titleEl) titleEl.textContent = original;
+}
+
+// ====================================================================
+// PLAYOFFS
+// ====================================================================
+function getTeamWinPct(team) {
+  return team.w / ((team.w + team.l) || 1);
+}
+
+function teamSeedCmp(a, b) {
+  const pa = getTeamWinPct(a), pb = getTeamWinPct(b);
+  if (pb !== pa) return pb - pa;
+  if (b.w !== a.w) return b.w - a.w;
+  return a.name.localeCompare(b.name);
+}
+
+function seedLeague(leagueName) {
+  const teams = LEAGUE.teams.filter(t => t.league === leagueName);
+  const divisions = [...new Set(teams.map(t => t.division))];
+  // Division winners: best record per division, sorted by win%
+  const divWinners = divisions.map(div => {
+    const divTeams = teams.filter(t => t.division === div).sort(teamSeedCmp);
+    return divTeams[0];
+  }).filter(Boolean).sort(teamSeedCmp);
+  // Wild cards: remaining teams sorted by win%
+  const winnerIds = new Set(divWinners.map(t => t.id));
+  const wildCards = teams.filter(t => !winnerIds.has(t.id)).sort(teamSeedCmp);
+  // Seeds 1-3: division winners; 4-6: wild cards
+  const seeds = [...divWinners.slice(0, 3), ...wildCards.slice(0, 3)];
+  return seeds;
+}
+
+function buildBracket(alSeeds, nlSeeds) {
+  const mkSeries = (id, round, league, seriesLength, higherSeedIdx, lowerSeedIdx, seeds, nextSeriesId, nextSeriesSlot) => ({
+    id, round, league, seriesLength,
+    higherSeedId: seeds[higherSeedIdx]?.id ?? null,
+    higherSeed: higherSeedIdx + 1,
+    lowerSeedId: seeds[lowerSeedIdx]?.id ?? null,
+    lowerSeed: lowerSeedIdx + 1,
+    higherSeedWins: 0, lowerSeedWins: 0,
+    games: [], winner: null,
+    nextSeriesId: nextSeriesId ?? null,
+    nextSeriesSlot: nextSeriesSlot ?? null,
+  });
+
+  return [
+    // AL Wild Card
+    mkSeries('al-wc-a', 'wildCard', 'AL', 3, 2, 5, alSeeds, 'al-ds-c', 'lower'),
+    mkSeries('al-wc-b', 'wildCard', 'AL', 3, 3, 4, alSeeds, 'al-ds-d', 'lower'),
+    // AL Division Series
+    mkSeries('al-ds-c', 'divSeries', 'AL', 5, 1, 0, alSeeds, 'al-cs', null),
+    mkSeries('al-ds-d', 'divSeries', 'AL', 5, 0, 0, alSeeds, 'al-cs', null),
+    // AL Championship
+    { id:'al-cs', round:'champSeries', league:'AL', seriesLength:7, higherSeedId:null, higherSeed:null, lowerSeedId:null, lowerSeed:null, higherSeedWins:0, lowerSeedWins:0, games:[], winner:null, nextSeriesId:'ws', nextSeriesSlot:null },
+    // NL Wild Card
+    mkSeries('nl-wc-f', 'wildCard', 'NL', 3, 2, 5, nlSeeds, 'nl-ds-h', 'lower'),
+    mkSeries('nl-wc-g', 'wildCard', 'NL', 3, 3, 4, nlSeeds, 'nl-ds-i', 'lower'),
+    // NL Division Series
+    mkSeries('nl-ds-h', 'divSeries', 'NL', 5, 1, 0, nlSeeds, 'nl-cs', null),
+    mkSeries('nl-ds-i', 'divSeries', 'NL', 5, 0, 0, nlSeeds, 'nl-cs', null),
+    // NL Championship
+    { id:'nl-cs', round:'champSeries', league:'NL', seriesLength:7, higherSeedId:null, higherSeed:null, lowerSeedId:null, lowerSeed:null, higherSeedWins:0, lowerSeedWins:0, games:[], winner:null, nextSeriesId:'ws', nextSeriesSlot:null },
+    // World Series
+    { id:'ws', round:'worldSeries', league:'WS', seriesLength:7, higherSeedId:null, higherSeed:null, lowerSeedId:null, lowerSeed:null, higherSeedWins:0, lowerSeedWins:0, games:[], winner:null, nextSeriesId:null, nextSeriesSlot:null },
+  ];
+}
+
+export function generatePlayoffs() {
+  // Validate
+  const alTeams = LEAGUE.teams.filter(t => t.league === 'American League');
+  const nlTeams = LEAGUE.teams.filter(t => t.league === 'National League');
+  const alValid = alTeams.filter(t => (t.w + t.l) > 0);
+  const nlValid = nlTeams.filter(t => (t.w + t.l) > 0);
+  if (alTeams.length < 6 || nlTeams.length < 6 || alValid.length < 6 || nlValid.length < 6) {
+    alert('Need at least 6 teams per league with games played to start playoffs.');
+    return;
+  }
+  const alSeeds = seedLeague('American League');
+  const nlSeeds = seedLeague('National League');
+  if (alSeeds.length < 6 || nlSeeds.length < 6) {
+    alert('Could not determine 6 seeds per league. Check team league assignments.');
+    return;
+  }
+  const series = buildBracket(alSeeds, nlSeeds);
+  // Fix DS seeds: al-ds-c seed 2 vs WC-A winner; al-ds-d seed 1 vs WC-B winner
+  const alDsC = series.find(s => s.id === 'al-ds-c');
+  const alDsD = series.find(s => s.id === 'al-ds-d');
+  const nlDsH = series.find(s => s.id === 'nl-ds-h');
+  const nlDsI = series.find(s => s.id === 'nl-ds-i');
+  // Seed 2 gets bye in DS vs WC winner
+  alDsC.higherSeedId = alSeeds[1].id; alDsC.higherSeed = 2; alDsC.lowerSeedId = null;
+  alDsD.higherSeedId = alSeeds[0].id; alDsD.higherSeed = 1; alDsD.lowerSeedId = null;
+  nlDsH.higherSeedId = nlSeeds[1].id; nlDsH.higherSeed = 2; nlDsH.lowerSeedId = null;
+  nlDsI.higherSeedId = nlSeeds[0].id; nlDsI.higherSeed = 1; nlDsI.lowerSeedId = null;
+
+  LEAGUE.playoffs = { active: true, round: 'wildCard', series, activeSeriesIdx: null };
+  saveLeague();
+  renderPlayoffs();
+}
+
+export function renderPlayoffs() {
+  const cont = document.getElementById('playoffs-container');
+  const actions = document.getElementById('playoffs-topbar-actions');
+  if (!cont) return;
+
+  if (!LEAGUE.playoffs?.active) {
+    renderPlayoffLanding(cont, actions);
+  } else {
+    renderPlayoffBracket(cont, actions);
+  }
+}
+
+function renderPlayoffLanding(cont, actions) {
+  if (actions) actions.innerHTML = `<button class="btn sm primary" onclick="generatePlayoffs()">Start Playoffs</button>`;
+
+  const alTeams = LEAGUE.teams.filter(t => t.league === 'American League');
+  const nlTeams = LEAGUE.teams.filter(t => t.league === 'National League');
+  const alValid = alTeams.filter(t => (t.w + t.l) > 0).length >= 6;
+  const nlValid = nlTeams.filter(t => (t.w + t.l) > 0).length >= 6;
+
+  const mkSeedsHtml = (leagueName, label) => {
+    const teams = LEAGUE.teams.filter(t => t.league === leagueName);
+    if (teams.filter(t => (t.w + t.l) > 0).length < 6) {
+      return `<div class="playoff-seeds-league"><div class="playoff-seeds-title">${label}</div><div style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--muted);padding:12px 0">Not enough games played.</div></div>`;
+    }
+    const seeds = seedLeague(leagueName);
+    const rows = seeds.map((t, i) => {
+      const tag = i < 3 ? 'DIV' : 'WC';
+      const pct = getTeamWinPct(t).toFixed(3);
+      return `<div class="playoff-seed-row">
+        <span class="playoff-seed-num">${i + 1}</span>
+        ${teamLogoHtml(t, 20)}
+        <span style="flex:1;font-size:0.82rem">${t.name}</span>
+        <span class="playoff-seed-tag">${tag}</span>
+        <span class="playoff-seed-pct">${t.w}–${t.l}</span>
+      </div>`;
+    }).join('');
+    return `<div class="playoff-seeds-league"><div class="playoff-seeds-title">${label}</div>${rows}</div>`;
+  };
+
+  cont.innerHTML = `
+    <div class="section-title" style="margin-bottom:6px">Projected Postseason Seeds</div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted);margin-bottom:20px">Based on current standings. Seeds 1 & 2 receive first-round byes.</div>
+    ${(!alValid || !nlValid) ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:12px 16px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;margin-bottom:20px">⚠️ Need at least 6 teams per league with games played to generate playoffs.</div>` : ''}
+    <div class="playoff-seeds-preview">
+      ${mkSeedsHtml('American League', 'American League')}
+      ${mkSeedsHtml('National League', 'National League')}
+    </div>
+    <button class="btn primary" onclick="generatePlayoffs()"${(!alValid || !nlValid) ? ' disabled' : ''}>Generate Playoff Bracket →</button>
+  `;
+}
+
+function seriesStatusText(s) {
+  const winsNeeded = Math.ceil(s.seriesLength / 2);
+  if (s.winner != null) {
+    const wTeam = LEAGUE.teams.find(t => t.id === s.winner);
+    const wName = wTeam ? wTeam.name.split(' ').slice(-1)[0] : '?';
+    const hw = s.higherSeedId === s.winner ? s.higherSeedWins : s.lowerSeedWins;
+    const lw = s.higherSeedId === s.winner ? s.lowerSeedWins : s.higherSeedWins;
+    return `${wName} win ${hw}–${lw}`;
+  }
+  if (s.higherSeedId === null || s.lowerSeedId === null) return 'TBD';
+  if (s.higherSeedWins === 0 && s.lowerSeedWins === 0) return `Best of ${s.seriesLength}`;
+  if (s.higherSeedWins === s.lowerSeedWins) return `Tied ${s.higherSeedWins}–${s.lowerSeedWins}`;
+  const leader = s.higherSeedWins > s.lowerSeedWins ? s.higherSeedId : s.lowerSeedId;
+  const lTeam = LEAGUE.teams.find(t => t.id === leader);
+  const lName = lTeam ? lTeam.name.split(' ').slice(-1)[0] : '?';
+  const lw = Math.max(s.higherSeedWins, s.lowerSeedWins);
+  const tw = Math.min(s.higherSeedWins, s.lowerSeedWins);
+  return `${lName} lead ${lw}–${tw}`;
+}
+
+function mkSeriesBox(s, sIdx, playoffsObj) {
+  const higherTeam = s.higherSeedId != null ? LEAGUE.teams.find(t => t.id === s.higherSeedId) : null;
+  const lowerTeam  = s.lowerSeedId  != null ? LEAGUE.teams.find(t => t.id === s.lowerSeedId)  : null;
+  const isComplete = s.winner != null;
+  const isTBD = s.higherSeedId == null || s.lowerSeedId == null;
+  const isPlaying = playoffsObj.activeSeriesIdx === sIdx && !isComplete;
+
+  const mkTeamRow = (team, seed, wins, isWinner, isTbdSlot) => {
+    if (isTbdSlot || !team) return `<div class="playoff-team-row"><span class="playoff-seed-badge">${seed ?? '?'}</span><span class="playoff-tbd">TBD</span><span class="playoff-wins-count">—</span></div>`;
+    return `<div class="playoff-team-row${isComplete ? (isWinner ? ' winner' : ' loser') : ''}">
+      <span class="playoff-seed-badge">${seed ?? '?'}</span>
+      ${teamLogoHtml(team, 18)}
+      <span class="playoff-team-name">${team.name}</span>
+      <span class="playoff-wins-count">${wins}</span>
+    </div>`;
+  };
+
+  const higherWin = s.winner != null && s.winner === s.higherSeedId;
+  const lowerWin  = s.winner != null && s.winner === s.lowerSeedId;
+  const teamRows = mkTeamRow(higherTeam, s.higherSeed, s.higherSeedWins, higherWin, s.higherSeedId == null) +
+                   mkTeamRow(lowerTeam,  s.lowerSeed,  s.lowerSeedWins,  lowerWin,  s.lowerSeedId == null);
+
+  const statusText = seriesStatusText(s);
+  let btnsHtml = '';
+  if (isPlaying) {
+    btnsHtml = `<div class="playoff-playing-badge">▶ Playing now...</div>`;
+  } else if (!isComplete && !isTBD) {
+    btnsHtml = `<div class="playoff-series-btns">
+      <button class="btn sm primary" onclick="playoffPlayNext(${sIdx})">Play Next Game</button>
+      <button class="btn sm" onclick="playoffAutoSeries(${sIdx})">Auto Series</button>
+    </div>`;
+  }
+
+  const classes = ['playoff-series-box', isComplete ? 'playoff-series-complete' : '', isPlaying ? 'playoff-playing-now' : ''].filter(Boolean).join(' ');
+  const champClass = s.round === 'worldSeries' && isComplete ? ' champion' : '';
+  return `<div class="${classes}">
+    ${teamRows}
+    <div class="playoff-series-record${champClass}">${isComplete && s.round === 'worldSeries' ? '🏆 ' : ''}${statusText}</div>
+    ${btnsHtml}
+  </div>`;
+}
+
+function mkByeBox(seed, team) {
+  if (!team) return `<div class="playoff-bye-box"><span class="playoff-seed-badge">${seed}</span><span class="playoff-bye-team playoff-tbd">TBD</span><span class="playoff-bye-label">BYE</span></div>`;
+  return `<div class="playoff-bye-box">
+    <span class="playoff-seed-badge">${seed}</span>
+    ${teamLogoHtml(team, 18)}
+    <span class="playoff-bye-team">${team.name}</span>
+    <span class="playoff-bye-label">BYE</span>
+  </div>`;
+}
+
+function renderPlayoffBracket(cont, actions) {
+  const p = LEAGUE.playoffs;
+  const series = p.series;
+
+  // Topbar actions
+  const allDone = series.every(s => s.winner);
+  if (actions) {
+    if (!allDone) {
+      actions.innerHTML = `<button class="btn sm" onclick="playoffAutoAll()">Auto-Play All →</button>
+        <button class="btn sm danger" onclick="resetPlayoffs()">Reset</button>`;
+    } else {
+      actions.innerHTML = `<button class="btn sm danger" onclick="resetPlayoffs()">Reset</button>`;
+    }
+  }
+
+  const findS = id => series.find(s => s.id === id);
+  const sIdx  = id => series.findIndex(s => s.id === id);
+
+  // AL seeds 1 & 2 for bye boxes
+  const alWcA = findS('al-wc-a'); const alWcAIdx = sIdx('al-wc-a');
+  const alWcB = findS('al-wc-b'); const alWcBIdx = sIdx('al-wc-b');
+  const alDsC = findS('al-ds-c'); const alDsCIdx = sIdx('al-ds-c');
+  const alDsD = findS('al-ds-d'); const alDsDIdx = sIdx('al-ds-d');
+  const alCs  = findS('al-cs');   const alCsIdx  = sIdx('al-cs');
+  const nlWcF = findS('nl-wc-f'); const nlWcFIdx = sIdx('nl-wc-f');
+  const nlWcG = findS('nl-wc-g'); const nlWcGIdx = sIdx('nl-wc-g');
+  const nlDsH = findS('nl-ds-h'); const nlDsHIdx = sIdx('nl-ds-h');
+  const nlDsI = findS('nl-ds-i'); const nlDsIIdx = sIdx('nl-ds-i');
+  const nlCs  = findS('nl-cs');   const nlCsIdx  = sIdx('nl-cs');
+  const ws    = findS('ws');      const wsIdx    = sIdx('ws');
+
+  const alSeed2Team = alDsC.higherSeedId ? LEAGUE.teams.find(t => t.id === alDsC.higherSeedId) : null;
+  const alSeed1Team = alDsD.higherSeedId ? LEAGUE.teams.find(t => t.id === alDsD.higherSeedId) : null;
+  const nlSeed2Team = nlDsH.higherSeedId ? LEAGUE.teams.find(t => t.id === nlDsH.higherSeedId) : null;
+  const nlSeed1Team = nlDsI.higherSeedId ? LEAGUE.teams.find(t => t.id === nlDsI.higherSeedId) : null;
+
+  const wsWinnerTeam = ws.winner != null ? LEAGUE.teams.find(t => t.id === ws.winner) : null;
+
+  cont.innerHTML = `
+    <div class="playoffs-bracket">
+      <div class="playoff-round-col">
+        <div class="playoff-round-label">Wild Card</div>
+        <div class="playoff-league-group">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">American League</div>
+          ${mkByeBox(2, alSeed2Team)}
+          ${mkSeriesBox(alWcA, alWcAIdx, p)}
+          ${mkByeBox(1, alSeed1Team)}
+          ${mkSeriesBox(alWcB, alWcBIdx, p)}
+        </div>
+        <div class="playoff-group-spacer"></div>
+        <div class="playoff-league-group">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">National League</div>
+          ${mkByeBox(2, nlSeed2Team)}
+          ${mkSeriesBox(nlWcF, nlWcFIdx, p)}
+          ${mkByeBox(1, nlSeed1Team)}
+          ${mkSeriesBox(nlWcG, nlWcGIdx, p)}
+        </div>
+      </div>
+
+      <div class="playoff-round-col">
+        <div class="playoff-round-label">Division Series</div>
+        <div class="playoff-league-group">
+          ${mkSeriesBox(alDsC, alDsCIdx, p)}
+          ${mkSeriesBox(alDsD, alDsDIdx, p)}
+        </div>
+        <div class="playoff-group-spacer"></div>
+        <div class="playoff-league-group">
+          ${mkSeriesBox(nlDsH, nlDsHIdx, p)}
+          ${mkSeriesBox(nlDsI, nlDsIIdx, p)}
+        </div>
+      </div>
+
+      <div class="playoff-round-col">
+        <div class="playoff-round-label">Championship Series</div>
+        <div class="playoff-league-group">
+          ${mkSeriesBox(alCs, alCsIdx, p)}
+        </div>
+        <div class="playoff-group-spacer"></div>
+        <div class="playoff-league-group">
+          ${mkSeriesBox(nlCs, nlCsIdx, p)}
+        </div>
+      </div>
+
+      <div class="playoff-round-col">
+        <div class="playoff-round-label">World Series</div>
+        ${mkSeriesBox(ws, wsIdx, p)}
+        ${wsWinnerTeam ? `<div style="margin-top:16px;text-align:center">
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);letter-spacing:3px">🏆 Champions</div>
+          <div style="font-family:'Oswald',sans-serif;font-size:1.3rem;font-weight:700;margin-top:4px">${wsWinnerTeam.name}</div>
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+export function resetPlayoffs() {
+  if (!confirm('Reset playoffs? All playoff progress will be lost.')) return;
+  LEAGUE.playoffs = null;
+  saveLeague();
+  renderPlayoffs();
 }

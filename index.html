@@ -19,6 +19,7 @@
   <div class="nav-item active" onclick="nav('home')" id="nav-home"><span class="nav-icon">🏆</span> League Home</div>
   <div class="nav-item" onclick="nav('players')" id="nav-players"><span class="nav-icon">👤</span> Players</div>
   <div class="nav-item" onclick="nav('schedule')" id="nav-schedule"><span class="nav-icon">📅</span> Schedule</div>
+  <div class="nav-item" onclick="nav('playoffs')" id="nav-playoffs"><span class="nav-icon">🏆</span> Playoffs</div>
   <div class="nav-section">Game</div>
   <div class="nav-item" onclick="nav('simulate')" id="nav-simulate"><span class="nav-icon">▶</span> Simulate Game</div>
   <div class="league-picker">
@@ -92,6 +93,17 @@
     </div>
     <div class="page" style="display:block;padding:24px 28px 60px">
       <div id="schedule-container"></div>
+    </div>
+  </div>
+
+  <!-- PLAYOFFS PAGE -->
+  <div class="page" id="page-playoffs">
+    <div class="topbar">
+      <div><div class="topbar-title">Playoffs</div><div class="topbar-sub">MLB Postseason</div></div>
+      <div class="topbar-actions" id="playoffs-topbar-actions"></div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div id="playoffs-container"></div>
     </div>
   </div>
 
