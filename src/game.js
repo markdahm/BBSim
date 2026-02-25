@@ -949,6 +949,8 @@ function endGame() {
       LEAGUE.playoffs.activeSeriesIdx = null;
       advancePlayoffBracket(series);
     }
+    // In single-play mode, clear the active index so the bracket doesn't stay in "Playing now"
+    if (playoffSeriesAutoRemaining <= 0) LEAGUE.playoffs.activeSeriesIdx = null;
     saveLeague();
     G.running = false;
     if (playoffSeriesAutoRemaining > 0) { playoffAutoNext(); return; }
