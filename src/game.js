@@ -77,20 +77,26 @@ export function renderSimulate() {
       const sched = LEAGUE.schedule || [];
       const nextIdx = sched.findIndex(g => !g.played);
       const played  = sched.filter(g => g.played).length;
+      const total   = sched.length;
+      const remaining = total - played;
+      const schedStrip = total > 0 ? `
+        <div style="display:flex;gap:24px;margin:14px 0 4px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem">
+          <div><span style="font-weight:700;font-size:1rem">${total}</span><div style="color:var(--muted);letter-spacing:1px;text-transform:uppercase;font-size:0.56rem;margin-top:2px">Total</div></div>
+          <div><span style="font-weight:700;font-size:1rem">${played}</span><div style="color:var(--muted);letter-spacing:1px;text-transform:uppercase;font-size:0.56rem;margin-top:2px">Played</div></div>
+          <div><span style="font-weight:700;font-size:1rem">${remaining}</span><div style="color:var(--muted);letter-spacing:1px;text-transform:uppercase;font-size:0.56rem;margin-top:2px">Remaining</div></div>
+        </div>` : '';
       let picker;
       if (sched.length === 0) {
         picker = `<div style="padding:20px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">No schedule found. Build one on the Schedule page.</div>`;
       } else if (nextIdx === -1) {
-        picker = `<div style="padding:20px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">All ${sched.length} games have been played!</div>`;
+        picker = `${schedStrip}<div style="padding:12px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">All ${sched.length} games have been played!</div>`;
       } else {
         const g    = sched[nextIdx];
         const away = LEAGUE.teams.find(t => t.id === g.awayId);
         const home = LEAGUE.teams.find(t => t.id === g.homeId);
         picker = `
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted);margin-bottom:14px">
-            Game ${played + 1} of ${sched.length}
-          </div>
-          <div class="sched-next-game">
+          ${schedStrip}
+          <div class="sched-next-game" style="margin-top:14px">
             <span class="sng-team">${teamLogoHtml(away, 32)} ${away.name}</span>
             <span class="sng-at">@</span>
             <span class="sng-team">${teamLogoHtml(home, 32)} ${home.name}</span>
@@ -138,7 +144,7 @@ export function startGame(awayIdArg, homeIdArg) {
     running: true,
     away, home,
     inning:1, half:0, outs:0, balls:0, strikes:0,
-    bases:[false,false,false],
+    bases:[null, null, null], baseEarned:[true, true, true],
     score:[Array(9).fill(null),Array(9).fill(null)],
     runsStart:[0,0], runs:[0,0], hits:[0,0], errors:[0,0],
     lineupIdx:[0,0], over:false, walkoffPending:false,
@@ -470,7 +476,7 @@ function simPitch() {
     G.strikes++; pitcher.game.strikes++;
     if (G.strikes >= 3) {
       G.balls = 0; G.strikes = 0;
-      batter.career.pa = (batter.career.pa || 0) + 1; batter.game.ab++;
+      batter.career.pa = (batter.career.pa || 0) + 1; batter.career.ab++; batter.game.ab++;
       pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
       addLog(gTag(), `Called strike 3. ${batter.name} struck out looking! ⚡`, 't-k', 'K');
       showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
@@ -483,7 +489,7 @@ function simPitch() {
     G.strikes++; pitcher.game.strikes++;
     if (G.strikes >= 3) {
       G.balls = 0; G.strikes = 0;
-      batter.career.pa = (batter.career.pa || 0) + 1; batter.game.ab++;
+      batter.career.pa = (batter.career.pa || 0) + 1; batter.career.ab++; batter.game.ab++;
       pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
       addLog(gTag(), `Swings through strike 3. ${batter.name} struck out swinging! ⚡`, 't-k', 'K');
       showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
@@ -492,7 +498,8 @@ function simPitch() {
     addLog(gTag(), `Swings and misses. Strike ${G.strikes}. Count: ${G.balls}-${G.strikes}.`, 't-swing'); gRenderAll(); return;
   }
 
-  const outcome = rollO(probs);
+  const rawOutcome = rollO(probs);
+  const outcome = tryExtraBase(batter, rawOutcome);
 
   // 'walk' and 'k' accumulate the count — intercept before the count reset
   if (outcome === 'walk') {
@@ -505,7 +512,7 @@ function simPitch() {
     G.strikes++; pitcher.game.strikes++;
     if (G.strikes >= 3) {
       G.balls = 0; G.strikes = 0;
-      batter.career.pa = (batter.career.pa || 0) + 1; batter.game.ab++;
+      batter.career.pa = (batter.career.pa || 0) + 1; batter.career.ab++; batter.game.ab++;
       pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
       addLog(gTag(), `${batter.name} strikes out. ⚡`, 't-k', 'K');
       showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
@@ -529,9 +536,9 @@ function simPitch() {
         const eT = [['E4','second baseman boots it'],['E6','shortstop throws wild'],['E5','third baseman bobbles'],['E3','first base drops the throw']];
         const [eCode, eDesc] = eT[ri(eT.length)];
         addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
-        const rbE = G.runs[bi]; advR(1, bi, true, false); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
+        const rbE = G.runs[bi]; advR(1, bi, true, false, batter); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
       }
-      if (G.bases[0] && G.outs < 2 && Math.random() < .28) { addLog(gTag(), `${batter.name} hits into a double play!`, 't-out', 'DP'); showScoreboardMsg('DOUBLE PLAY!', 1800); pushFeed('DP', batter.name); G.bases[0] = false; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); }
+      if (G.bases[0] && G.outs < 2 && Math.random() < .28) { addLog(gTag(), `${batter.name} hits into a double play!`, 't-out', 'DP'); showScoreboardMsg('DOUBLE PLAY!', 1800); pushFeed('DP', batter.name); G.bases[0] = null; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); }
       else { const t = ['grounds to short','grounds out to second','bounces to third']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'GO'); showScoreboardMsg('GROUND OUT', 1200); pushFeed('GO', batter.name); nextB(bi); recOut(bi); }
       break;
     }
@@ -543,14 +550,14 @@ function simPitch() {
         const eT = [['E7','left fielder drops it'],['E8','center fielder misjudges it'],['E9','right fielder muffs the catch']];
         const [eCode, eDesc] = eT[ri(eT.length)];
         addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
-        const rbE = G.runs[bi]; advR(1, bi, false, false); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
+        const rbE = G.runs[bi]; advR(1, bi, false, false, batter); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
       }
       const foT = ['flies out to center','pops to right','lofts one to left — caught'];
       const isSF = G.bases[2] && G.outs < 2 && Math.random() < .72;
       addLog(gTag(), `${batter.name} ${foT[ri(foT.length)]}.`, 't-out', isSF ? 'SF' : 'FO');
       if (isSF) {
         batter.career.sf = (batter.career.sf || 0) + 1; batter.game.sf = (batter.game.sf || 0) + 1;
-        G.bases[2] = false; scoreRun(bi); addRunLog(bi, 1); batter.game.rbi++; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name);
+        const sfRunner = G.bases[2], sfEarned = G.baseEarned[2]; G.bases[2] = null; G.baseEarned[2] = true; scoreRun(bi, sfEarned, sfRunner); addRunLog(bi, 1); batter.game.rbi++; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name);
       } else {
         batter.career.ab++; batter.game.ab++;
         showScoreboardMsg('FLY OUT', 1200); pushFeed('FO', batter.name);
@@ -564,32 +571,33 @@ function simPitch() {
         const eT = [['E4','second baseman can\'t handle it'],['E6','shortstop drops the liner'],['E5','third baseman juggles it']];
         const [eCode, eDesc] = eT[ri(eT.length)];
         addLog(gTag(), `${eCode} — ${eDesc}! ${batter.name} reaches safely.`, 't-hit', 'E'); showScoreboardMsg('ERROR!', 1500); pushFeed('E', batter.name);
-        const rbE = G.runs[bi]; advR(1, bi, true, false); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
+        const rbE = G.runs[bi]; advR(1, bi, true, false, batter); addRunLog(bi, G.runs[bi] - rbE, false); nextB(bi); break;
       }
       const t = ['lines out to short','ropes one to second — OUT','lasers one to center — caught!']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'LO'); showScoreboardMsg('LINE OUT', 1200); pushFeed('LO', batter.name); nextB(bi); recOut(bi); break;
     }
-    case 'hbp': { batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.balls++; pitcher.career.hbp++; pitcher.game.hbp++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit', 'HBP'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbH); nextB(bi); break; }
+    case 'hbp': { batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.balls++; pitcher.career.hbp++; pitcher.game.hbp++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit', 'HBP'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbH); nextB(bi); break; }
     case 'single': {
       G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.pa++; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++;
       addLog(gTag(), `${batter.name} singles!`, 't-hit', '1B'); showScoreboardMsg('SINGLE!', 1500); pushFeed('1B', batter.name);
       // 2 outs + runner on 2nd: scoring chance depends on runner speed
       if (G.outs === 2 && G.bases[1]) {
-        // Approximate runner identity: player 2 lineup spots ahead of current batter
-        const runnerApprox = batting.batters[(G.lineupIdx[bi] + 7) % 9];
-        const spd = Math.min(100, Math.round((runnerApprox.sbRate / 0.15) * 100));
+        const runnerApprox = G.bases[1];
+        const spd = Math.min(100, Math.round(((runnerApprox?.sbRate || 0.08) / 0.15) * 100));
         const scoreChance = spd >= 90 ? 0.90 : 0.25 + (spd / 100) * 0.65;
         const r2scores = Math.random() < scoreChance;
-        const nb = [false, false, false];
+        const runner3 = G.bases[2], runner2 = G.bases[1], runner1 = G.bases[0];
+        const earned3 = G.baseEarned[2], earned2 = G.baseEarned[1], earned1 = G.baseEarned[0];
+        const nb = [null, null, null], ne = [true, true, true];
         const rb1 = G.runs[bi];
-        if (G.bases[2]) { scoreRun(bi); }                              // runner on 3rd always scores
-        if (r2scores)   { scoreRun(bi); }
-        else            { nb[2] = true; addLog(gTag(), `Runner holds at third.`, 't-info'); }
-        if (G.bases[0]) { nb[1] = true; }                              // runner on 1st → 2nd
-        nb[0] = true;                                                   // batter → 1st
-        G.bases = nb;
+        if (runner3) { scoreRun(bi, earned3, runner3); }               // runner on 3rd always scores
+        if (r2scores) { scoreRun(bi, earned2, runner2); }
+        else          { nb[2] = runner2; ne[2] = earned2; addLog(gTag(), `Runner holds at third.`, 't-info'); }
+        if (runner1) { nb[1] = runner1; ne[1] = earned1; }            // runner on 1st → 2nd
+        nb[0] = batter;                                                 // batter → 1st (hit = earned)
+        G.bases = nb; G.baseEarned = ne;
         addRunLog(bi, G.runs[bi] - rb1); batter.game.rbi += G.runs[bi] - rb1;
       } else {
-        const rb1 = G.runs[bi]; advR(1, bi, true); addRunLog(bi, G.runs[bi] - rb1); batter.game.rbi += G.runs[bi] - rb1;
+        const rb1 = G.runs[bi]; advR(1, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb1); batter.game.rbi += G.runs[bi] - rb1;
       }
       nextB(bi); break;
     }
@@ -598,33 +606,38 @@ function simPitch() {
       addLog(gTag(), `${batter.name} doubles!`, 't-hit', '2B'); showScoreboardMsg('DOUBLE!!', 1800); pushFeed('2B', batter.name);
       // Runner on 1st: speed-based scoring chance (2 outs = runners go on contact)
       if (G.bases[0]) {
-        const runnerApprox = batting.batters[(G.lineupIdx[bi] + 8) % 9]; // 1 spot back in lineup
-        const spd = Math.min(100, Math.round((runnerApprox.sbRate / 0.15) * 100));
+        const runner1 = G.bases[0];
+        const spd = Math.min(100, Math.round(((runner1?.sbRate || 0.08) / 0.15) * 100));
         const scoreChance = G.outs === 2
-          ? (spd >= 90 ? 0.85 : 0.25 + (spd / 100) * 0.60)   // 2 outs: avg ~60%, fast ~85%
-          : (spd >= 90 ? 0.60 : 0.10 + (spd / 100) * 0.40);  // 0-1 outs: avg ~33%, fast ~60%
+          ? (spd >= 90 ? 0.85 : 0.25 + (spd / 100) * 0.60)
+          : (spd >= 90 ? 0.60 : 0.10 + (spd / 100) * 0.40);
         const r1scores = Math.random() < scoreChance;
-        const nb = [false, false, false];
+        const runner3 = G.bases[2], runner2 = G.bases[1];
+        const earned3 = G.baseEarned[2], earned2 = G.baseEarned[1], earned1 = G.baseEarned[0];
+        const nb = [null, null, null], ne = [true, true, true];
         const rb2 = G.runs[bi];
-        if (G.bases[2]) { scoreRun(bi); }                              // runner on 3rd always scores
-        if (G.bases[1]) { scoreRun(bi); }                              // runner on 2nd always scores
-        if (r1scores)   { scoreRun(bi); }
-        else            { nb[2] = true; addLog(gTag(), `Runner holds at third.`, 't-info'); }
-        nb[1] = true;                                                   // batter → 2nd
-        G.bases = nb;
+        if (runner3) { scoreRun(bi, earned3, runner3); }               // runner on 3rd always scores
+        if (runner2) { scoreRun(bi, earned2, runner2); }               // runner on 2nd always scores
+        if (r1scores) { scoreRun(bi, earned1, runner1); }
+        else          { nb[2] = runner1; ne[2] = earned1; addLog(gTag(), `Runner holds at third.`, 't-info'); }
+        nb[1] = batter;                                                 // batter → 2nd (hit = earned)
+        G.bases = nb; G.baseEarned = ne;
         addRunLog(bi, G.runs[bi] - rb2); batter.game.rbi += G.runs[bi] - rb2;
       } else {
-        const rb2 = G.runs[bi]; advR(2, bi, true); addRunLog(bi, G.runs[bi] - rb2); batter.game.rbi += G.runs[bi] - rb2;
+        const rb2 = G.runs[bi]; advR(2, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb2); batter.game.rbi += G.runs[bi] - rb2;
       }
       nextB(bi); break;
     }
-    case 'triple': { G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.triples = (batter.career.triples || 0) + 1; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++; addLog(gTag(), `${batter.name} TRIPLES!`, 't-hit', '3B'); showScoreboardMsg('TRIPLE!!!', 2200); pushFeed('3B', batter.name); const rb3 = G.runs[bi]; advR(3, bi, true); addRunLog(bi, G.runs[bi] - rb3); batter.game.rbi += G.runs[bi] - rb3; nextB(bi); break; }
+    case 'triple': { G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.triples = (batter.career.triples || 0) + 1; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++; addLog(gTag(), `${batter.name} TRIPLES!`, 't-hit', '3B'); showScoreboardMsg('TRIPLE!!!', 2200); pushFeed('3B', batter.name); const rb3 = G.runs[bi]; advR(3, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb3); batter.game.rbi += G.runs[bi] - rb3; nextB(bi); break; }
     case 'hr': {
       G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.hr++; batter.game.ab++; batter.game.h++; batter.game.hr++; pitcher.game.hits++; pitcher.career.h++; pitcher.career.hr++; pitcher.game.hr++; pitcher.game.strikes++;
-      const ob = G.bases.filter(Boolean).length;
+      const runnerData = G.bases.map((r, i) => r ? { player: r, earned: G.baseEarned[i] } : null).filter(Boolean);
+      const ob = runnerData.length;
       addLog(gTag(), `${batter.name} HOMERS! ${ob+1} run${ob+1 > 1 ? 's' : ''} score! 💥`, 't-hr', 'HR'); showScoreboardMsg('HOME RUN!!', 1800, '#cc1111'); pushFeed('HR', batter.name);
-      G.bases = [false,false,false];
-      for (let r = 0; r <= ob; r++) { scoreRun(bi); batter.career.rbi = (batter.career.rbi || 0) + 1; }
+      G.bases = [null, null, null]; G.baseEarned = [true, true, true];
+      for (const { player, earned } of runnerData) scoreRun(bi, earned, player);
+      scoreRun(bi, true, batter); // batter's own HR is always earned
+      batter.career.rbi = (batter.career.rbi || 0) + ob + 1;
       batter.game.rbi += ob + 1;
       nextB(bi); break;
     }
@@ -636,7 +649,7 @@ function simPitch() {
 function doWalk(batter, pitcher, bi, fielding) {
   pitcher.career.bb++; batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.bf++;
   addLog(gTag(), `${batter.name} draws a walk.`, 't-hit', 'BB'); showScoreboardMsg('WALK', 1500); pushFeed('BB', batter.name);
-  const rbW = G.runs[bi]; advR(1, bi, false); addRunLog(bi, G.runs[bi] - rbW); nextB(bi); G.balls = 0; G.strikes = 0;
+  const rbW = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbW); nextB(bi); G.balls = 0; G.strikes = 0;
   gRenderAll();
   if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
@@ -691,12 +704,12 @@ export function resolveDec(id, bi) {
   const runner2 = batting.batters[(li + 7) % 9];
   switch (id) {
     case 'play':   addLog(gTag(), 'Manager plays it straight.', 't-manage'); break;
-    case 'steal2': { const ok = Math.random() < .68; addLog(gTag(), `🏃 ${ok ? 'SAFE! Runner takes 2nd!' : 'CAUGHT STEALING!'}`, ok ? 't-hit' : 't-out'); if (ok) { G.bases[0] = false; G.bases[1] = true; runner1.career.sb++; } else { G.bases[0] = false; runner1.career.cs++; recOut(bi); } break; }
-    case 'dsteal': { const a = Math.random() < .64, b2 = Math.random() < .64; if (a && b2) { addLog(gTag(), '🏃🏃 Double steal — BOTH SAFE!', 't-hit'); G.bases[0] = false; G.bases[1] = true; G.bases[2] = true; runner1.career.sb++; runner2.career.sb++; } else if (a) { addLog(gTag(), 'Lead runner safe, trailing caught!', 't-out'); G.bases[0] = false; G.bases[2] = true; runner1.career.cs++; runner2.career.sb++; recOut(bi); } else { addLog(gTag(), 'Double steal botched!', 't-out'); G.bases[0] = false; G.bases[1] = false; runner1.career.cs++; runner2.career.cs++; recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
-    case 'steal3': { const ok = Math.random() < .64; addLog(gTag(), `🏃 Steal of 3rd — ${ok ? 'SAFE!' : 'CAUGHT!'}`, ok ? 't-hit' : 't-out'); if (ok) { G.bases[1] = false; G.bases[2] = true; runner2.career.sb++; } else { G.bases[1] = false; runner2.career.cs++; recOut(bi); } break; }
-    case 'bunt':   { const ok = Math.random() < .87; if (ok) { addLog(gTag(), '📦 Sac bunt — runners advance.', 't-manage'); if (G.bases[2]) { G.bases[2] = false; scoreRun(bi); } if (G.bases[1]) { G.bases[2] = true; G.bases[1] = false; } if (G.bases[0]) { G.bases[1] = true; G.bases[0] = false; } nextB(bi); recOut(bi); } else { addLog(gTag(), '📦 Bunt popped up — double play!', 't-out'); if (G.bases[0]) { G.bases[0] = false; recOut(bi); } nextB(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
-    case 'squeeze':{ const ok = Math.random() < .70; addLog(gTag(), `🎯 Suicide squeeze — ${ok ? 'SCORES!' : 'POPPED UP — double play!'}`, ok ? 't-score' : 't-out'); if (ok) { G.bases[2] = false; scoreRun(bi); addRunLog(bi, 1); nextB(bi); recOut(bi); } else { G.bases[2] = false; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
-    case 'hitrun': { const ok = Math.random() < .72; if (ok) { addLog(gTag(), '✅ Hit and run — contact! Runner takes extra base.', 't-hit'); G.hits[G.half]++; const bat = (G.half === 0 ? G.away : G.home).batters[G.lineupIdx[G.half]]; bat.career.h++; bat.career.ab++; advR(2, bi, true); nextB(bi); } else { addLog(gTag(), '❌ Hit and run — miss! Runner caught.', 't-out'); G.bases[0] = false; recOut(bi); } break; }
+    case 'steal2': { const ok = Math.random() < .68; addLog(gTag(), `🏃 ${ok ? 'SAFE! Runner takes 2nd!' : 'CAUGHT STEALING!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[0], re = G.baseEarned[0]; G.bases[0] = null; G.bases[1] = r; G.baseEarned[1] = re; runner1.career.sb++; } else { G.bases[0] = null; runner1.career.cs++; recOut(bi); } break; }
+    case 'dsteal': { const a = Math.random() < .64, b2 = Math.random() < .64; if (a && b2) { addLog(gTag(), '🏃🏃 Double steal — BOTH SAFE!', 't-hit'); const r1 = G.bases[0], r2 = G.bases[1], re1 = G.baseEarned[0], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[1] = r1; G.bases[2] = r2; G.baseEarned[1] = re1; G.baseEarned[2] = re2; runner1.career.sb++; runner2.career.sb++; } else if (a) { addLog(gTag(), 'Lead runner safe, trailing caught!', 't-out'); const r2 = G.bases[1], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[2] = r2; G.baseEarned[2] = re2; runner1.career.cs++; runner2.career.sb++; recOut(bi); } else { addLog(gTag(), 'Double steal botched!', 't-out'); G.bases[0] = null; G.bases[1] = null; runner1.career.cs++; runner2.career.cs++; recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
+    case 'steal3': { const ok = Math.random() < .64; addLog(gTag(), `🏃 Steal of 3rd — ${ok ? 'SAFE!' : 'CAUGHT!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[1], re = G.baseEarned[1]; G.bases[1] = null; G.bases[2] = r; G.baseEarned[2] = re; runner2.career.sb++; } else { G.bases[1] = null; runner2.career.cs++; recOut(bi); } break; }
+    case 'bunt':   { const ok = Math.random() < .87; if (ok) { addLog(gTag(), '📦 Sac bunt — runners advance.', 't-manage'); if (G.bases[2]) { const r = G.bases[2], re = G.baseEarned[2]; G.bases[2] = null; scoreRun(bi, re, r); } if (G.bases[1]) { G.bases[2] = G.bases[1]; G.baseEarned[2] = G.baseEarned[1]; G.bases[1] = null; } if (G.bases[0]) { G.bases[1] = G.bases[0]; G.baseEarned[1] = G.baseEarned[0]; G.bases[0] = null; } nextB(bi); recOut(bi); } else { addLog(gTag(), '📦 Bunt popped up — double play!', 't-out'); if (G.bases[0]) { G.bases[0] = null; recOut(bi); } nextB(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
+    case 'squeeze':{ const ok = Math.random() < .70; addLog(gTag(), `🎯 Suicide squeeze — ${ok ? 'SCORES!' : 'POPPED UP — double play!'}`, ok ? 't-score' : 't-out'); if (ok) { const r = G.bases[2], re = G.baseEarned[2]; G.bases[2] = null; scoreRun(bi, re, r); addRunLog(bi, 1); nextB(bi); recOut(bi); } else { G.bases[2] = null; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
+    case 'hitrun': { const ok = Math.random() < .72; if (ok) { addLog(gTag(), '✅ Hit and run — contact! Runner takes extra base.', 't-hit'); G.hits[G.half]++; const bat = (G.half === 0 ? G.away : G.home).batters[G.lineupIdx[G.half]]; bat.career.h++; bat.career.ab++; advR(2, bi, true, true, bat); nextB(bi); } else { addLog(gTag(), '❌ Hit and run — miss! Runner caught.', 't-out'); G.bases[0] = null; recOut(bi); } break; }
   }
   gRenderAll();
   if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
@@ -717,8 +730,9 @@ function flashHome() {
   step();
 }
 
-function scoreRun(bi, earned = true) {
+function scoreRun(bi, earned = true, runner = null) {
   G.runs[bi]++;
+  if (runner) runner.career.r = (runner.career.r || 0) + 1;
   G.scoringLog.push({ bi, away: G.runs[0], home: G.runs[1], awayPitcherIdx: G.away.activePitcher, homePitcherIdx: G.home.activePitcher, earned });
   const fldTeam = bi === 0 ? G.home : G.away;
   const curP = fldTeam.pitchers[fldTeam.activePitcher];
@@ -738,28 +752,37 @@ function addRunLog(bi, n, earned = true) {
   pushFeed('R', `${team.name.split(' ').slice(-1)[0]} · ${score}`);
 }
 
-function advR(bases, bi, batterAdv, earned = true) {
-  let scored = 0, nb = [false,false,false];
-  if (batterAdv) { for (let b = 2; b >= 0; b--) { if (G.bases[b]) { const d = b + bases; if (d >= 3) scored++; else nb[d] = true; } } const d = bases - 1; if (d >= 3) scored++; else nb[d] = true; }
-  else {
+function advR(bases, bi, batterAdv, earned = true, batter = null) {
+  let scored = [], scoredEarned = [], nb = [null, null, null], ne = [true, true, true];
+  if (batterAdv) {
+    for (let b = 2; b >= 0; b--) {
+      if (G.bases[b]) {
+        const d = b + bases;
+        if (d >= 3) { scored.push(G.bases[b]); scoredEarned.push(G.baseEarned[b]); }
+        else { nb[d] = G.bases[b]; ne[d] = G.baseEarned[b]; }
+      }
+    }
+    const d = bases - 1;
+    if (d >= 3) { scored.push(batter); scoredEarned.push(earned); }
+    else { nb[d] = batter; ne[d] = earned; }
+  } else {
     // Force-advance: batter takes 1st, chain forces runners ahead of the clog.
-    // Any runner NOT in the force chain stays put.
-    nb[0] = true;
+    nb[0] = batter; ne[0] = earned;
     if (G.bases[0]) {
-      nb[1] = true;
+      nb[1] = G.bases[0]; ne[1] = G.baseEarned[0];
       if (G.bases[1]) {
-        nb[2] = true;
-        if (G.bases[2]) scored++;
+        nb[2] = G.bases[1]; ne[2] = G.baseEarned[1];
+        if (G.bases[2]) { scored.push(G.bases[2]); scoredEarned.push(G.baseEarned[2]); }
       } else {
-        if (G.bases[2]) nb[2] = true; // runner on 3rd not forced — stays
+        if (G.bases[2]) { nb[2] = G.bases[2]; ne[2] = G.baseEarned[2]; } // runner on 3rd not forced — stays
       }
     } else {
-      if (G.bases[1]) nb[1] = true; // runner on 2nd not forced — stays
-      if (G.bases[2]) nb[2] = true; // runner on 3rd not forced — stays
+      if (G.bases[1]) { nb[1] = G.bases[1]; ne[1] = G.baseEarned[1]; } // runner on 2nd not forced — stays
+      if (G.bases[2]) { nb[2] = G.bases[2]; ne[2] = G.baseEarned[2]; } // runner on 3rd not forced — stays
     }
   }
-  G.bases = nb;
-  for (let i = 0; i < scored; i++) scoreRun(bi, earned);
+  G.bases = nb; G.baseEarned = ne;
+  for (let i = 0; i < scored.length; i++) scoreRun(bi, scoredEarned[i], scored[i]);
 }
 
 function nextB(bi) { G.lineupIdx[bi] = (G.lineupIdx[bi] + 1) % 9; }
@@ -768,7 +791,18 @@ function recOut(bi) {
   if (G.over) return;
   const fldTeam = bi === 0 ? G.home : G.away;
   fldTeam.pitchers[fldTeam.activePitcher].game.outs++;
-  G.outs++; if (G.outs >= 3) endHalf(bi);
+  G.outs++;
+  if (G.outs >= 3) { endHalf(bi); return; }
+  // Mid-inning check: pull starter who's exceeded their limit before the next batter
+  if (G.inning >= 4) {
+    const pitcher = fldTeam.pitchers[fldTeam.activePitcher];
+    if (pitcher && (pitcher.pos === 'SP' || pitcher.pos === 'P')) {
+      const pitches = pitcher.game?.pitches || 0;
+      // 0% at 90, 100% at 115 — hard limit kicks in around 95-105
+      const pullProb = cl((pitches - 90) / 25, 0, 1);
+      if (Math.random() < pullProb) checkFatigueAndSub(fldTeam, true);
+    }
+  }
 }
 
 function checkCloserSituation(team, teamRuns, oppRuns) {
@@ -783,9 +817,18 @@ function checkCloserSituation(team, teamRuns, oppRuns) {
   team.pitchers[clIdx].game.entryScore = { away: G.runs[0], home: G.runs[1] };
 }
 
-function checkFatigueAndSub(team) {
+function checkFatigueAndSub(team, force = false) {
   const pitcher = team.pitchers[team.activePitcher];
-  if (!pitcher || getFatigue(pitcher) <= 0.90) return;
+  if (!pitcher) return;
+  const pitches = pitcher.game?.pitches || 0;
+  const isStarter = pitcher.pos === 'SP' || pitcher.pos === 'P';
+  if (!isStarter) {
+    if (getFatigue(pitcher) <= 0.90) return;
+  } else {
+    // Probability ramp: 0% at 80 pitches → 100% at 110 pitches (median pull ~95)
+    const pullProb = cl((pitches - 80) / 30, 0, 1);
+    if (!force && Math.random() > pullProb) return;
+  }
   const avail = (p, i) => i !== team.activePitcher && getFatigue(p) < 1;
   // 1. Prefer RP
   let eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i) && p.pos==='RP');
@@ -806,7 +849,7 @@ function checkFatigueAndSub(team) {
 function endHalf(bi) {
   const ir = G.runs[bi] - G.runsStart[bi];
   G.score[bi][G.inning - 1] = ir;
-  G.bases = [false,false,false]; G.balls = 0; G.strikes = 0; G.outs = 0;
+  G.bases = [null, null, null]; G.baseEarned = [true, true, true]; G.balls = 0; G.strikes = 0; G.outs = 0;
   G.eventFeed.unshift({ icon: String(ir), label: ir === 1 ? 'run scored' : 'runs scored', summary: true });
   gRenderFeed();
   if (bi === 0) {
@@ -1144,12 +1187,34 @@ function getFatigue(pitcher) {
   return Math.min(1, pitches / 50);
 }
 
+// After a hit is rolled, a fast runner may stretch for an extra base.
+// Single → Double: meaningful above ~speed 60; max ~13% at elite speed.
+// Double → Triple: only elite speed; max ~6%.
+function tryExtraBase(batter, outcome) {
+  const speedFactor = cl((batter.sbRate || 0.075) / 0.15, 0, 1);
+  if (outcome === 'single' && Math.random() < Math.max(0, speedFactor - 0.55) * 0.30) return 'dbl';
+  if (outcome === 'dbl'    && Math.random() < Math.max(0, speedFactor - 0.70) * 0.20) return 'triple';
+  return outcome;
+}
+
 function calcProbs(b, p) {
   const fatigue = getFatigue(p);
   const k  = cl(b.kPct * .6  + p.kPct  * (1 - fatigue * 0.4) * .4, .10, .38);
   const bb = cl(b.bbPct * .6 + p.bbPct * (1 + fatigue * 0.6) * .4, .04, .18);
   const go = cl(b.goPct + (p.goD || 0) * (1 - fatigue * 0.5) * .4, .12, .32);
-  const raw = { k, go, fo:b.foPct, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single:b.singlePct * 0.75, dbl:b.doublePct * 0.75, triple:b.triplePct * 0.75, hr:b.hrPct * 0.75 };
+  // Contact drives hit rate; speed adds a small infield-single bonus; power splits hit types.
+  const speedFactor  = cl((b.sbRate || 0.075) / 0.15, 0, 1);
+  const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
+  const contactRate  = cl(0.270 - (b.kPct || 0.20) * 0.270, 0.145, 0.260);
+  const hitRate      = cl(contactRate + speedBonus, 0.135, 0.280);
+  const adjSinglePct = (b.singlePct || 0) + Math.max(0, speedBonus); // speed hits are singles
+  const rawHitSum    = adjSinglePct + (b.doublePct || 0) + (b.triplePct || 0) + (b.hrPct || 0);
+  const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
+  const single = hitRate * (adjSinglePct           / hitDenom);
+  const dbl    = hitRate * ((b.doublePct  || 0)    / hitDenom);
+  const triple = hitRate * ((b.triplePct  || 0)    / hitDenom);
+  const hr     = hitRate * ((b.hrPct      || 0)    / hitDenom);
+  const raw = { k, go, fo: b.foPct, lo: MLB.lo, walk: bb, hbp: MLB.hbp, single, dbl, triple, hr };
   const tot = Object.values(raw).reduce((s, v) => s + v, 0);
   const out = {}; for (const key in raw) out[key] = raw[key] / tot; return out;
 }

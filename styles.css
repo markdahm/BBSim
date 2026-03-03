@@ -93,9 +93,10 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .division-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 .division-card { background:var(--panel); border:1px solid var(--line); border-radius:4px; overflow:hidden; }
 .division-head { background:var(--ink); color:var(--chalk); padding:10px 16px; font-family:'Oswald',sans-serif; font-size:0.9rem; font-weight:500; letter-spacing:2px; text-transform:uppercase; }
-.standings-table { width:100%; border-collapse:collapse; }
+.standings-table { width:100%; border-collapse:collapse; table-layout:fixed; }
 .standings-table th { font-family:'IBM Plex Mono',monospace; font-size:0.58rem; letter-spacing:1px; text-transform:uppercase; color:var(--muted); padding:8px 14px; text-align:left; border-bottom:1px solid var(--line); }
 .standings-table th:not(:first-child) { text-align:center; }
+.standings-table th:last-child, .standings-table td:last-child { padding-right:20px; }
 .standings-table td { padding:8px 14px; border-bottom:1px solid #f5f5f5; font-size:0.82rem; }
 .standings-table td:not(:first-child) { text-align:center; font-family:'IBM Plex Mono',monospace; font-size:0.78rem; }
 .standings-table tr:last-child td { border-bottom:none; }

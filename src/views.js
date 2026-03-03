@@ -48,19 +48,6 @@ export function renderHome() {
   document.getElementById('league-sub').textContent = `${LEAGUE.season} Season · 30 Teams`;
   document.getElementById('season-display').textContent = LEAGUE.season;
 
-  // Stat cards
-  const topHR  = allBatters().sort((a,b) => b.career.hr - a.career.hr)[0];
-  const topAVG = allBatters().filter(p => p.career.ab > 50).sort((a,b) => battingAvg(b) - battingAvg(a))[0];
-  const topK   = allPitchers().sort((a,b) => b.career.k - a.career.k)[0];
-  const playerTeam = p => p ? (LEAGUE.teams.find(t => t.batters.includes(p) || t.pitchers.includes(p))?.name ?? '') : '';
-  const scEl = document.getElementById('league-stat-cards');
-  scEl.innerHTML = `
-    <div class="stat-card"><div class="sc-val">${LEAGUE.gamesPlayed}</div><div class="sc-lbl">Games Played</div></div>
-    <div class="stat-card"><div class="sc-val">${topHR  ? topHR.career.hr            : '—'}</div><div class="sc-lbl">HR Leader · ${topHR  ? topHR.name  : '—'}<br><span style="font-weight:400;opacity:0.7">${playerTeam(topHR)}</span></div></div>
-    <div class="stat-card"><div class="sc-val">${topAVG ? battingAvg(topAVG).toFixed(3) : '—'}</div><div class="sc-lbl">AVG Leader · ${topAVG ? topAVG.name : '—'}<br><span style="font-weight:400;opacity:0.7">${playerTeam(topAVG)}</span></div></div>
-    <div class="stat-card"><div class="sc-val">${topK   ? topK.career.k               : '—'}</div><div class="sc-lbl">K Leader · ${topK   ? topK.name   : '—'}<br><span style="font-weight:400;opacity:0.7">${playerTeam(topK)}</span></div></div>
-  `;
-
   // Standings by division — two columns (AL | NL), fixed East→Central→West order
   const cont = document.getElementById('standings-container');
   const leagueOrder = ['American League', 'National League'];
@@ -99,14 +86,14 @@ export function renderHome() {
     const leader = divTeams[0];
     let rows = '';
     divTeams.forEach((t, i) => {
-      const pct = (t.w + t.l) === 0 ? '.000' : (t.w / (t.w + t.l)).toFixed(3);
+      const pct = (t.w + t.l) === 0 ? '.000' : (t.w / (t.w + t.l)).toFixed(3).replace(/^0\./, '.');
       const gb  = i === 0 ? '—' : (((leader.w - leader.l) - (t.w - t.l)) / 2).toFixed(1);
       rows += `<tr onclick="openTeam(${t.id})"><td class="team-cell">${teamLogoHtml(t, 30)} ${t.name}</td><td>${t.w}</td><td>${t.l}</td><td>${pct}</td><td class="gb-cell">${gb}</td></tr>`;
     });
     return `<div class="division-card">
       <div class="division-head">${divName}</div>
       <table class="standings-table">
-        <thead><tr><th>Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th></tr></thead>
+        <thead><tr><th>Team</th><th style="width:46px">W</th><th style="width:46px">L</th><th style="width:62px">PCT</th><th style="width:68px">GB</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -120,8 +107,14 @@ export function renderHome() {
     </div>`;
   });
 
+  const sched = LEAGUE.schedule || [];
+  const schedPlayed = sched.filter(g => g.played).length;
+  const schedTotal  = sched.length;
+  const schedRemain = schedTotal - schedPlayed;
+  const schedLabel  = schedTotal > 0 ? ` (${schedPlayed} of ${schedTotal} · ${schedRemain} remaining)` : '';
+
   cont.innerHTML = cols.length === 2
-    ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div>`
+    ? `<div style="max-width:50%"><div class="section-title" style="text-align:center;margin-bottom:16px">Standings<span style="font-size:0.65rem;font-weight:400;font-family:'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none;opacity:0.6">${schedLabel}</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div></div>`
     : cols.join('');
 }
 
@@ -493,7 +486,26 @@ function projectPlayer(p) {
     const k  = cl(p.kPct * .6  + MLB.k    * .4, .10, .38);
     const bb = cl(p.bbPct * .6 + MLB.walk * .4, .04, .16);
     const go = cl(p.goPct, .12, .32);
-    const pr = norm({ k, go, fo:p.foPct, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single:p.singlePct, dbl:p.doublePct, triple:p.triplePct, hr:p.hrPct });
+    const speedFactor  = cl((p.sbRate || 0.075) / 0.15, 0, 1);
+    const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
+    const contactRate  = cl(0.270 - (p.kPct||0.20) * 0.270, 0.145, 0.260);
+    const hitRate      = cl(contactRate + speedBonus, 0.135, 0.280);
+    const adjSinglePct = (p.singlePct||0) + Math.max(0, speedBonus);
+    const rawHitSum    = adjSinglePct + (p.doublePct||0) + (p.triplePct||0) + (p.hrPct||0);
+    const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
+    // Base hit type probabilities
+    const pSingle = hitRate * (adjSinglePct     / hitDenom);
+    const pDbl    = hitRate * ((p.doublePct||0) / hitDenom);
+    const pTriple = hitRate * ((p.triplePct||0) / hitDenom);
+    const pHr     = hitRate * ((p.hrPct||0)     / hitDenom);
+    // Speed-based extra-base upgrade (mirrors tryExtraBase in sim)
+    const singleUpgrade = Math.max(0, speedFactor - 0.55) * 0.30;
+    const doubleUpgrade = Math.max(0, speedFactor - 0.70) * 0.20;
+    const single = pSingle * (1 - singleUpgrade);
+    const dbl    = pDbl * (1 - doubleUpgrade) + pSingle * singleUpgrade;
+    const triple = pTriple + pDbl * doubleUpgrade;
+    const hr     = pHr;
+    const pr = norm({ k, go, fo:p.foPct, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single, dbl, triple, hr });
     const BB=Math.round(pr.walk*PA), HBP=Math.round(pr.hbp*PA), K=Math.round(pr.k*PA);
     const AB=PA-BB-HBP;
     const H1=Math.round(pr.single*PA), H2=Math.round(pr.dbl*PA), H3=Math.round(pr.triple*PA), HR=Math.round(pr.hr*PA);
@@ -568,7 +580,7 @@ function renderCard(t, p) {
   card.innerHTML = `
   <div class="card-left">
     <div class="card-year">${LEAGUE.season} · ${LEAGUE.name}</div>
-    <div class="card-team-name">${t.emoji} ${t.name}</div>
+    <div class="card-team-name">${teamLogoHtml(t, 22)} ${t.name}</div>
     <div class="card-player-avatar">${p.emoji}</div>
     <div class="card-player-name">${p.name}</div>
     <div class="card-player-pos">${p.pos} · ${p.arch}</div>
@@ -690,8 +702,8 @@ export function updateRating(label, rawVal) {
   const v = Math.max(0, Math.min(99, parseInt(rawVal) || 0));
 
   if (p.type === 'batter') {
-    if (label === 'Contact')  p.kPct   = cl((1 - v/100) * 0.40, 0.10, 0.40);
-    if (label === 'Power')    p.hrPct  = cl((v/100) * 0.112, 0.005, 0.112);
+    if (label === 'Contact')  { p.kPct  = cl((1 - v/100) * 0.40, 0.10, 0.40); p.avg = cl(0.195 + (v/100) * 0.130, 0.190, 0.330); }
+    if (label === 'Power')    { p.hrPct = cl((v/100) * 0.112, 0.005, 0.112); p.doublePct = cl(0.022 + (v/100) * 0.050, 0.02, 0.09); }
     if (label === 'Patience') p.bbPct  = cl((v/100) * 0.18, 0.04, 0.18);
     if (label === 'Speed')    p.sbRate = cl((v/100) * 0.15, 0.02, 0.25);
   } else {
