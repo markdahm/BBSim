@@ -25,6 +25,7 @@ let schedOutsideFirst = null;     // first-selected div in outside mode
 // ====================================================================
 const PAGES = ['home','players','simulate','schedule','playoffs'];
 export function nav(page) {
+  document.querySelectorAll('details.dropdown').forEach(d => d.removeAttribute('open'));
   PAGES.forEach(p => {
     document.getElementById(`page-${p}`).classList.remove('active');
     const navEl = document.getElementById(`nav-${p}`);
@@ -102,7 +103,7 @@ export function renderHome() {
   const cols = sortedLeagues.map(leagueName => {
     const divs = divisionOrder[leagueName] || leagueDivs.get(leagueName).sort();
     return `<div style="display:flex;flex-direction:column;gap:20px">
-      <div class="section-title">${leagueName}</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:1.3rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;text-align:center;padding-bottom:8px;border-bottom:2px solid var(--ink)">${leagueName}</div>
       ${divs.map(mkDivCard).join('')}
     </div>`;
   });
@@ -114,7 +115,7 @@ export function renderHome() {
   const schedLabel  = schedTotal > 0 ? ` (${schedPlayed} of ${schedTotal} · ${schedRemain} remaining)` : '';
 
   cont.innerHTML = cols.length === 2
-    ? `<div style="max-width:50%"><div class="section-title" style="text-align:center;margin-bottom:16px">Standings<span style="font-size:0.65rem;font-weight:400;font-family:'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none;opacity:0.6">${schedLabel}</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div></div>`
+    ? `<div style="max-width:70%"><div style="font-family:'Oswald',sans-serif;font-size:1.45rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;text-align:center;margin-bottom:16px">STANDINGS<span style="font-size:0.65rem;font-weight:400;font-family:'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none;opacity:0.6">${schedLabel}</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div></div>`
     : cols.join('');
 }
 
@@ -154,6 +155,7 @@ export function openPitcherTable() {
 
 export function closeRosterTable() {
   document.getElementById('roster-table-overlay').style.display = 'none';
+  renderHome();
 }
 export const closeBatterTable  = closeRosterTable;
 export const closePitcherTable = closeRosterTable;
@@ -177,7 +179,7 @@ function renderRosterTableContent() {
   const titleEl = document.getElementById('roster-table-title');
   if (titleEl) {
     const logoClick = `<label title="Upload logo" style="cursor:pointer;display:inline-flex;align-items:center">${teamLogoHtml(t, 24)}<input type="file" accept="image/*" onchange="uploadTeamLogo(this)" style="display:none"></label>`;
-    titleEl.innerHTML = `${logoClick} <span id="roster-team-name" onclick="editTeamName()" title="Click to rename" style="cursor:pointer;border-bottom:1px dashed transparent;transition:border-color 0.15s" onmouseover="this.style.borderBottomColor='var(--ink)'" onmouseout="this.style.borderBottomColor='transparent'">${t.name}</span>`;
+    titleEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px">${logoClick}<span id="roster-team-name" onclick="editTeamName()" title="Click to rename" style="cursor:pointer;border-bottom:1px dashed transparent;transition:border-color 0.15s" onmouseover="this.style.borderBottomColor='var(--ink)'" onmouseout="this.style.borderBottomColor='transparent'">${t.name}</span></div>`;
   }
 
   const metaEl = document.getElementById('roster-header-meta');
@@ -488,8 +490,8 @@ function projectPlayer(p) {
     const go = cl(p.goPct, .12, .32);
     const speedFactor  = cl((p.sbRate || 0.075) / 0.15, 0, 1);
     const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
-    const contactRate  = cl(0.270 - (p.kPct||0.20) * 0.270, 0.145, 0.260);
-    const hitRate      = cl(contactRate + speedBonus, 0.135, 0.280);
+    const contactRate  = cl(0.240 - (p.kPct||0.20) * 0.240, 0.130, 0.230);
+    const hitRate      = cl(contactRate + speedBonus, 0.120, 0.250);
     const adjSinglePct = (p.singlePct||0) + Math.max(0, speedBonus);
     const rawHitSum    = adjSinglePct + (p.doublePct||0) + (p.triplePct||0) + (p.hrPct||0);
     const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
@@ -509,7 +511,7 @@ function projectPlayer(p) {
     const BB=Math.round(pr.walk*PA), HBP=Math.round(pr.hbp*PA), K=Math.round(pr.k*PA);
     const AB=PA-BB-HBP;
     const H1=Math.round(pr.single*PA), H2=Math.round(pr.dbl*PA), H3=Math.round(pr.triple*PA), HR=Math.round(pr.hr*PA);
-    const H=H1+H2+H3+HR, TB=H1+2*H2+3*H3+4*HR;
+    const H=Math.round((pr.single+pr.dbl+pr.triple+pr.hr)*PA), TB=H1+2*H2+3*H3+4*HR;
     const AVG=AB>0?(H/AB).toFixed(3):'.000';
     const OBP=((H+BB+HBP)/PA).toFixed(3);
     const SLG=AB>0?(TB/AB).toFixed(3):'.000';
@@ -1644,6 +1646,41 @@ function mkByeBox(seed, team) {
   </div>`;
 }
 
+function mkPlayoffGameLog(series) {
+  const rounds = [
+    { key:'wildCard',    label:'Wild Card' },
+    { key:'divSeries',   label:'Division Series' },
+    { key:'champSeries', label:'Championship Series' },
+    { key:'worldSeries', label:'World Series' },
+  ];
+  let sections = '';
+  for (const { key, label } of rounds) {
+    const roundSeries = series.filter(s => s.round === key && s.games.length > 0);
+    if (!roundSeries.length) continue;
+    let rows = '';
+    for (const s of roundSeries) {
+      for (const g of s.games) {
+        const away = LEAGUE.teams.find(t => t.id === g.awayId);
+        const home = LEAGUE.teams.find(t => t.id === g.homeId);
+        if (!away || !home) continue;
+        const awayWon = g.awayScore > g.homeScore;
+        rows += `<div class="sched-row played">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;color:var(--muted);flex-shrink:0;width:52px">Gm ${g.gameNum}</span>
+          <span class="sched-team${awayWon ? ' sched-winner' : ''}">${teamLogoHtml(away, 18)} ${away.name}</span>
+          <span class="sched-score">${g.awayScore} – ${g.homeScore}</span>
+          <span class="sched-team${!awayWon ? ' sched-winner' : ''}">${teamLogoHtml(home, 18)} ${home.name}</span>
+        </div>`;
+      }
+    }
+    sections += `<div class="div-section-title" style="margin-top:18px">${label}</div><div class="sched-list">${rows}</div>`;
+  }
+  if (!sections) return '';
+  return `<div style="margin-top:40px;max-width:700px">
+    <div class="section-title" style="margin-bottom:4px">Playoff Game Log</div>
+    ${sections}
+  </div>`;
+}
+
 function renderPlayoffBracket(cont, actions) {
   const p = LEAGUE.playoffs;
   const series = p.series;
@@ -1652,7 +1689,7 @@ function renderPlayoffBracket(cont, actions) {
   const allDone = series.every(s => s.winner);
   if (actions) {
     if (!allDone) {
-      actions.innerHTML = `<button class="btn sm" onclick="playoffAutoAll()">Auto-Play All →</button>
+      actions.innerHTML = `<button class="btn sm" onclick="playoffAutoAll()">Play Division Series</button>
         <button class="btn sm danger" onclick="resetPlayoffs()">Reset</button>`;
     } else {
       actions.innerHTML = `<button class="btn sm danger" onclick="resetPlayoffs()">Reset</button>`;
@@ -1682,61 +1719,87 @@ function renderPlayoffBracket(cont, actions) {
 
   const wsWinnerTeam = ws.winner != null ? LEAGUE.teams.find(t => t.id === ws.winner) : null;
 
+  const leagueLabel = name => `<div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">${name}</div>`;
   cont.innerHTML = `
     <div class="playoffs-bracket">
+
       <div class="playoff-round-col">
         <div class="playoff-round-label">Wild Card</div>
         <div class="playoff-league-group">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">American League</div>
-          ${mkByeBox(2, alSeed2Team)}
-          ${mkSeriesBox(alWcA, alWcAIdx, p)}
-          ${mkByeBox(1, alSeed1Team)}
-          ${mkSeriesBox(alWcB, alWcBIdx, p)}
+          ${leagueLabel('American League')}
+          <div class="playoff-pair">
+            ${mkByeBox(2, alSeed2Team)}
+            ${mkSeriesBox(alWcA, alWcAIdx, p)}
+          </div>
+          <div class="playoff-pair">
+            ${mkByeBox(1, alSeed1Team)}
+            ${mkSeriesBox(alWcB, alWcBIdx, p)}
+          </div>
         </div>
         <div class="playoff-group-spacer"></div>
         <div class="playoff-league-group">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">National League</div>
-          ${mkByeBox(2, nlSeed2Team)}
-          ${mkSeriesBox(nlWcF, nlWcFIdx, p)}
-          ${mkByeBox(1, nlSeed1Team)}
-          ${mkSeriesBox(nlWcG, nlWcGIdx, p)}
+          ${leagueLabel('National League')}
+          <div class="playoff-pair">
+            ${mkByeBox(2, nlSeed2Team)}
+            ${mkSeriesBox(nlWcF, nlWcFIdx, p)}
+          </div>
+          <div class="playoff-pair">
+            ${mkByeBox(1, nlSeed1Team)}
+            ${mkSeriesBox(nlWcG, nlWcGIdx, p)}
+          </div>
         </div>
       </div>
 
       <div class="playoff-round-col">
         <div class="playoff-round-label">Division Series</div>
         <div class="playoff-league-group">
-          ${mkSeriesBox(alDsC, alDsCIdx, p)}
-          ${mkSeriesBox(alDsD, alDsDIdx, p)}
+          <div class="playoff-pair" style="justify-content:center">
+            ${mkSeriesBox(alDsC, alDsCIdx, p)}
+          </div>
+          <div class="playoff-pair" style="justify-content:center">
+            ${mkSeriesBox(alDsD, alDsDIdx, p)}
+          </div>
         </div>
         <div class="playoff-group-spacer"></div>
         <div class="playoff-league-group">
-          ${mkSeriesBox(nlDsH, nlDsHIdx, p)}
-          ${mkSeriesBox(nlDsI, nlDsIIdx, p)}
+          <div class="playoff-pair" style="justify-content:center">
+            ${mkSeriesBox(nlDsH, nlDsHIdx, p)}
+          </div>
+          <div class="playoff-pair" style="justify-content:center">
+            ${mkSeriesBox(nlDsI, nlDsIIdx, p)}
+          </div>
         </div>
       </div>
 
       <div class="playoff-round-col">
         <div class="playoff-round-label">Championship Series</div>
         <div class="playoff-league-group">
-          ${mkSeriesBox(alCs, alCsIdx, p)}
+          <div class="playoff-pair" style="justify-content:center">
+            ${mkSeriesBox(alCs, alCsIdx, p)}
+          </div>
         </div>
         <div class="playoff-group-spacer"></div>
         <div class="playoff-league-group">
-          ${mkSeriesBox(nlCs, nlCsIdx, p)}
+          <div class="playoff-pair" style="justify-content:center">
+            ${mkSeriesBox(nlCs, nlCsIdx, p)}
+          </div>
         </div>
       </div>
 
       <div class="playoff-round-col">
         <div class="playoff-round-label">World Series</div>
+        <div style="flex:1"></div>
         ${mkSeriesBox(ws, wsIdx, p)}
         ${wsWinnerTeam ? `<div style="margin-top:16px;text-align:center">
           <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);letter-spacing:3px">🏆 Champions</div>
           <div style="font-family:'Oswald',sans-serif;font-size:1.3rem;font-weight:700;margin-top:4px">${wsWinnerTeam.name}</div>
         </div>` : ''}
+        <div style="flex:1"></div>
       </div>
+
     </div>
   `;
+  cont.innerHTML += mkPlayoffGameLog(series);
 }
 
 export function resetPlayoffs() {

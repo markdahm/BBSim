@@ -570,15 +570,16 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 }
 
 /* ── PLAYOFFS ── */
-.playoffs-bracket { display:flex; gap:20px; align-items:flex-start; overflow-x:auto; padding-bottom:16px; }
+.playoffs-bracket { display:flex; gap:20px; align-items:stretch; overflow-x:auto; padding-bottom:16px; }
 .playoff-round-col { display:flex; flex-direction:column; gap:12px; min-width:220px; }
 .playoff-round-label {
   font-family:'IBM Plex Mono',monospace; font-size:0.56rem; letter-spacing:2px;
   text-transform:uppercase; color:var(--muted); margin-bottom:4px;
   padding-bottom:6px; border-bottom:1px solid var(--line);
 }
-.playoff-league-group { display:flex; flex-direction:column; gap:10px; }
-.playoff-group-spacer { height:24px; }
+.playoff-league-group { display:flex; flex-direction:column; gap:10px; flex:1; }
+.playoff-pair { display:flex; flex-direction:column; flex:1; gap:10px; }
+.playoff-group-spacer { height:32px; }
 .playoff-series-box {
   background:var(--panel); border:1px solid var(--line); border-radius:4px;
   padding:12px 14px; display:flex; flex-direction:column; gap:8px;

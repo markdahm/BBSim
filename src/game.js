@@ -798,8 +798,8 @@ function recOut(bi) {
     const pitcher = fldTeam.pitchers[fldTeam.activePitcher];
     if (pitcher && (pitcher.pos === 'SP' || pitcher.pos === 'P')) {
       const pitches = pitcher.game?.pitches || 0;
-      // 0% at 90, 100% at 115 — hard limit kicks in around 95-105
-      const pullProb = cl((pitches - 90) / 25, 0, 1);
+      // 0% at 75, 100% at 100 — hard limit kicks in around 80-95
+      const pullProb = cl((pitches - 75) / 25, 0, 1);
       if (Math.random() < pullProb) checkFatigueAndSub(fldTeam, true);
     }
   }
@@ -825,8 +825,8 @@ function checkFatigueAndSub(team, force = false) {
   if (!isStarter) {
     if (getFatigue(pitcher) <= 0.90) return;
   } else {
-    // Probability ramp: 0% at 80 pitches → 100% at 110 pitches (median pull ~95)
-    const pullProb = cl((pitches - 80) / 30, 0, 1);
+    // Probability ramp: 0% at 65 pitches → 100% at 100 pitches (median pull ~82)
+    const pullProb = cl((pitches - 65) / 35, 0, 1);
     if (!force && Math.random() > pullProb) return;
   }
   const avail = (p, i) => i !== team.activePitcher && getFatigue(p) < 1;
@@ -857,7 +857,7 @@ function endHalf(bi) {
     if (G.inning >= 9 && G.runs[1] > G.runs[0]) { endGame(); return; }
     G.half = 1; G.runsStart[1] = G.runs[1];
     if (G.inning >= 9) checkCloserSituation(G.home, G.runs[1], G.runs[0]);
-    if (G.inning >= 6) checkFatigueAndSub(G.away);
+    if (G.inning >= 5) checkFatigueAndSub(G.away);
   }
   else {
     addDelimiter('solid'); addLog(`End ${gOrd(G.inning)}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
@@ -865,7 +865,7 @@ function endHalf(bi) {
     G.inning++; G.half = 0; G.runsStart[0] = G.runs[0];
     if (G.inning > G.score[0].length) { G.score[0].push(null); G.score[1].push(null); }
     if (G.inning >= 9) checkCloserSituation(G.away, G.runs[0], G.runs[1]);
-    if (G.inning >= 6) checkFatigueAndSub(G.home);
+    if (G.inning >= 5) checkFatigueAndSub(G.home);
   }
 }
 
@@ -997,7 +997,6 @@ function endGame() {
     saveLeague();
     G.running = false;
     if (playoffSeriesAutoRemaining > 0) { playoffAutoNext(); return; }
-    window.nav('playoffs');
     return;
   }
 
@@ -1205,8 +1204,8 @@ function calcProbs(b, p) {
   // Contact drives hit rate; speed adds a small infield-single bonus; power splits hit types.
   const speedFactor  = cl((b.sbRate || 0.075) / 0.15, 0, 1);
   const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
-  const contactRate  = cl(0.270 - (b.kPct || 0.20) * 0.270, 0.145, 0.260);
-  const hitRate      = cl(contactRate + speedBonus, 0.135, 0.280);
+  const contactRate  = cl(0.240 - (b.kPct || 0.20) * 0.240, 0.130, 0.230);
+  const hitRate      = cl(contactRate + speedBonus, 0.120, 0.250);
   const adjSinglePct = (b.singlePct || 0) + Math.max(0, speedBonus); // speed hits are singles
   const rawHitSum    = adjSinglePct + (b.doublePct || 0) + (b.triplePct || 0) + (b.hrPct || 0);
   const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
