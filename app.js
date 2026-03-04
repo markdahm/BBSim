@@ -11,11 +11,12 @@ import {
   closeRosterTable, rosterSetTab, deletePlayerFromTable, deleteCurrentPlayer,
   openCard, openCardById, closeCard, closeCardDirect, prevCard, nextCard,
   updatePlayerName, updateRating, updateRatingFromBar, setFilter, setTeamFilter, doSort, renderPlayersTable,
-  schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
+  schedNewSeason, schedDeleteAll, schedGenerate, schedClear, schedCancel,
   schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
+  schedDragStart, schedDrop, schedSetCount, schedRemoveRow, schedSetIntraCount,
   generatePlayoffs, renderPlayoffs, resetPlayoffs,
 } from './src/views.js';
-import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gShowLineup, resolveDec, newMatchup, gSetDelay, playoffPlayNext, playoffAutoSeries, playoffAutoAll } from './src/game.js';
+import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gShowLineup, resolveDec, newMatchup, gSetDelay, playoffPlayNext, playoffAutoSeries, playoffAutoAll, playoffAutoRound } from './src/game.js';
 
 // ── Expose functions referenced in HTML onclick attributes ──
 Object.assign(window, {
@@ -30,14 +31,15 @@ Object.assign(window, {
   openCard, openCardById, closeCard, closeCardDirect, prevCard, nextCard,
   updatePlayerName, updateRating, updateRatingFromBar,
   setFilter, setTeamFilter, doSort, renderPlayersTable,
-  schedNewSeason, schedDeleteAll, schedSetMode, schedClickDiv, schedClickOutside, schedGenerate, schedClear, schedCancel,
+  schedNewSeason, schedDeleteAll, schedGenerate, schedClear, schedCancel,
   schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
+  schedDragStart, schedDrop, schedSetCount, schedRemoveRow, schedSetIntraCount,
   generatePlayoffs, renderPlayoffs, resetPlayoffs,
   // Roster import / export
   importRosters, exportLeague,
   // Game engine
-  startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gShowLineup, resolveDec, newMatchup, gSetDelay,
-  playoffPlayNext, playoffAutoSeries, playoffAutoAll,
+  startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gShowLineup, resolveDec, newMatchup, gSetDelay,
+  playoffPlayNext, playoffAutoSeries, playoffAutoAll, playoffAutoRound,
 });
 
 // ── Boot ──

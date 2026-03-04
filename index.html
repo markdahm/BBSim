@@ -44,11 +44,10 @@
         <details class="dropdown">
           <summary class="btn sm">League Settings ▾</summary>
           <div class="dropdown-menu">
-            <button class="dropdown-item" onclick="exportLeague()">Export League</button>
+            <button class="dropdown-item" onclick="exportLeague()">Export Rosters</button>
             <label class="dropdown-item">Import Roster
               <input type="file" accept=".txt,.csv,.tsv,.json" onchange="importRosters(this)" style="display:none">
             </label>
-            <button class="dropdown-item danger" onclick="clearSeason()">Clear Season</button>
           </div>
         </details>
       </div>
@@ -85,7 +84,7 @@
     <div class="topbar">
       <div><div class="topbar-title">Schedule</div><div class="topbar-sub" id="schedule-sub">Season games</div></div>
       <div class="topbar-actions">
-        <button class="btn sm" onclick="clearSeason()">Clear Season</button>
+        <button class="btn sm danger" onclick="clearSeason()">Clear Season</button>
         <button class="btn sm primary" onclick="advanceSeason()">Advance Season →</button>
       </div>
     </div>

@@ -20,6 +20,8 @@ let simMode = 'schedule';    // 'expo' | 'schedule' | 'playoffs'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
+let playoffIsAutoMode = false;       // true when game was started by auto-play (not single-play)
+let playoffCurrentSeriesIdx = -1;    // series index being played in single-play playoff mode
 
 // ====================================================================
 // SIMULATE PAGE ENTRY POINT
@@ -104,6 +106,7 @@ export function renderSimulate() {
           <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn primary" onclick="startScheduleGame()">Play Ball!</button>
             <button class="btn" onclick="gAutoMulti()">Auto Multi-Game</button>
+            <button class="btn" onclick="gAutoAll()">All of 'em</button>
           </div>`;
       }
       cont.innerHTML = `
@@ -184,6 +187,18 @@ export function schedPlayGame(schedIdx) {
 
 // Immediately start the next unplayed scheduled game
 export function gNextGame() {
+  if (simMode === 'playoffs') {
+    const p = LEAGUE.playoffs;
+    if (p && playoffCurrentSeriesIdx >= 0) {
+      const series = p.series[playoffCurrentSeriesIdx];
+      if (series && series.winner == null && series.higherSeedId != null && series.lowerSeedId != null) {
+        playoffPlayNext(playoffCurrentSeriesIdx);
+        return;
+      }
+    }
+    window.nav('playoffs');
+    return;
+  }
   const sched = LEAGUE.schedule || [];
   const idx = sched.findIndex(g => !g.played);
   if (idx === -1) {
@@ -798,23 +813,38 @@ function recOut(bi) {
     const pitcher = fldTeam.pitchers[fldTeam.activePitcher];
     if (pitcher && (pitcher.pos === 'SP' || pitcher.pos === 'P')) {
       const pitches = pitcher.game?.pitches || 0;
-      // 0% at 75, 100% at 100 — hard limit kicks in around 80-95
-      const pullProb = cl((pitches - 75) / 25, 0, 1);
-      if (Math.random() < pullProb) checkFatigueAndSub(fldTeam, true);
+      // In the 9th+, give starters a chance at the complete game — only pull if nearly exhausted
+      if (G.inning >= 9) {
+        if (getFatigue(pitcher) >= 0.95 && Math.random() < 0.5) checkFatigueAndSub(fldTeam, true);
+      } else {
+        // 0% at 75, 100% at 100 — hard limit kicks in around 80-95
+        const pullProb = cl((pitches - 75) / 25, 0, 1);
+        if (Math.random() < pullProb) checkFatigueAndSub(fldTeam, true);
+      }
     }
   }
 }
 
 function checkCloserSituation(team, teamRuns, oppRuns) {
   const lead = teamRuns - oppRuns;
-  if (lead < 1 || lead > 3) return;                                      // not a save situation
+  if (lead < 1 || lead > 3) return;                                       // save situation only (1–3 run lead)
+  if (Math.random() < 0.50) return;                                       // closer used in ~50% of save situations
+  // Find CL with lowest fatigue (excluding current pitcher)
+  let bestClIdx = -1, bestFatigue = Infinity;
+  team.pitchers.forEach((p, i) => {
+    if (p.pos === 'CL' && i !== team.activePitcher) {
+      const f = getFatigue(p);
+      if (f < bestFatigue) { bestFatigue = f; bestClIdx = i; }
+    }
+  });
+  if (bestClIdx === -1) return;                                           // no CL available
+  // If current pitcher is a CL below the replacement threshold, keep them in
+  const CL_REPLACE_THRESHOLD = 0.70;
   const curP = team.pitchers[team.activePitcher];
-  if (curP && curP.pos === 'CL') return;                                  // closer already in
-  const clIdx = team.pitchers.findIndex((p, i) => p.pos === 'CL' && i !== team.activePitcher && getFatigue(p) < 1);
-  if (clIdx === -1) return;                                               // no fresh CL available
-  addLog(gTag(), `🔒 Save situation — ${team.pitchers[clIdx].name} (CL) enters to close it out.`, 't-manage');
-  team.activePitcher = clIdx;
-  team.pitchers[clIdx].game.entryScore = { away: G.runs[0], home: G.runs[1] };
+  if (curP && curP.pos === 'CL' && getFatigue(curP) < CL_REPLACE_THRESHOLD) return;
+  addLog(gTag(), `🔒 3 outs remaining — ${team.pitchers[bestClIdx].name} (CL) enters to close it out.`, 't-manage');
+  team.activePitcher = bestClIdx;
+  team.pitchers[bestClIdx].game.entryScore = { away: G.runs[0], home: G.runs[1] };
 }
 
 function checkFatigueAndSub(team, force = false) {
@@ -823,11 +853,17 @@ function checkFatigueAndSub(team, force = false) {
   const pitches = pitcher.game?.pitches || 0;
   const isStarter = pitcher.pos === 'SP' || pitcher.pos === 'P';
   if (!isStarter) {
+    if (G.inning >= 9) return;                // let checkCloserSituation handle 9th+ changes
     if (getFatigue(pitcher) <= 0.90) return;
   } else {
-    // Probability ramp: 0% at 65 pitches → 100% at 100 pitches (median pull ~82)
-    const pullProb = cl((pitches - 65) / 35, 0, 1);
-    if (!force && Math.random() > pullProb) return;
+    if (G.inning >= 9) {
+      // Let fatigued starters attempt the complete game — only pull if nearly exhausted
+      if (!force && getFatigue(pitcher) < 0.95) return;
+    } else {
+      // Probability ramp: 0% at 65 pitches → 100% at 100 pitches (median pull ~82)
+      const pullProb = cl((pitches - 65) / 35, 0, 1);
+      if (!force && Math.random() > pullProb) return;
+    }
   }
   const avail = (p, i) => i !== team.activePitcher && getFatigue(p) < 1;
   // 1. Prefer RP
@@ -856,7 +892,7 @@ function endHalf(bi) {
     addDelimiter('dotted'); addLog(`End ${gOrd(G.inning)}`, `${G.away.name} ${G.runs[0]}, ${G.home.name} ${G.runs[1]}.`, 't-info');
     if (G.inning >= 9 && G.runs[1] > G.runs[0]) { endGame(); return; }
     G.half = 1; G.runsStart[1] = G.runs[1];
-    if (G.inning >= 9) checkCloserSituation(G.home, G.runs[1], G.runs[0]);
+    if (G.inning >= 8) checkCloserSituation(G.away, G.runs[0], G.runs[1]);
     if (G.inning >= 5) checkFatigueAndSub(G.away);
   }
   else {
@@ -864,13 +900,15 @@ function endHalf(bi) {
     if (G.inning >= 9 && G.runs[0] !== G.runs[1]) { endGame(); return; }
     G.inning++; G.half = 0; G.runsStart[0] = G.runs[0];
     if (G.inning > G.score[0].length) { G.score[0].push(null); G.score[1].push(null); }
-    if (G.inning >= 9) checkCloserSituation(G.away, G.runs[0], G.runs[1]);
+    if (G.inning >= 8) checkCloserSituation(G.home, G.runs[1], G.runs[0]);
     if (G.inning >= 5) checkFatigueAndSub(G.home);
   }
 }
 
 function endGame() {
   G.over = true;
+  hpQueue = 0;
+  const hp = document.getElementById('g-bh'); if (hp) hp.classList.remove('on');
   const awayWon = G.runs[0] > G.runs[1], homeWon = G.runs[1] > G.runs[0];
   const w = awayWon ? G.away.name : homeWon ? G.home.name : 'Tie';
 
@@ -923,14 +961,16 @@ function endGame() {
     }
     winP = wpCandidate;
 
-    // Save: last pitcher on winning team, not the WP, entered with a lead of 1–3 runs
+    // Save: last pitcher on winning team, not the WP
+    // Qualifies if: entered with a lead of 1–3 (standard)
+    //            OR entered with any positive lead and pitched ≥ 1 full inning (3+ outs)
     const lastWinP = winTeam.pitchers[winTeam.activePitcher];
-    if (lastWinP !== winP && lastWinP.game && lastWinP.game.pitches > 0) {
+    if (lastWinP !== winP && lastWinP.pos === 'CL' && lastWinP.game && lastWinP.game.pitches > 0) {
       const es = lastWinP.game.entryScore || { away: 0, home: 0 };
       const wEntry = winTi === 0 ? es.away : es.home;
       const lEntry = winTi === 0 ? es.home : es.away;
       const entryLead = wEntry - lEntry;
-      if (entryLead >= 1 && entryLead <= 3) saveP = lastWinP;
+      if (entryLead >= 1 && (entryLead <= 3 || lastWinP.game.outs >= 3)) saveP = lastWinP;
     }
   }
 
@@ -994,10 +1034,7 @@ function endGame() {
     }
     // In single-play mode, clear the active index so the bracket doesn't stay in "Playing now"
     if (playoffSeriesAutoRemaining <= 0) LEAGUE.playoffs.activeSeriesIdx = null;
-    saveLeague();
-    G.running = false;
-    if (playoffSeriesAutoRemaining > 0) { playoffAutoNext(); return; }
-    return;
+    if (playoffSeriesAutoRemaining > 0 || playoffIsAutoMode) { saveLeague(); G.running = false; playoffAutoNext(); return; }
   }
 
   saveLeague();
@@ -1030,7 +1067,7 @@ function endGame() {
             </div>`).join('');
       return `
           <div class="sbt-half">
-            <div class="sbt-team">${team.emoji} ${team.name}</div>
+            <div class="sbt-team">${teamLogoHtml(team, 18)} ${team.name}</div>
             <div class="sbt-hdr"><span>Batter</span><span>AB</span><span>H</span><span>RBI</span><span>HR</span></div>
             ${rows}
           </div>`;
@@ -1082,7 +1119,7 @@ function endGame() {
 
       return `
         <div class="pf-half${isWinner ? ' pf-winner' : ''}">
-          <div class="pf-team">${team.emoji} ${team.name}</div>
+          <div class="pf-team">${teamLogoHtml(team, 18)} ${team.name}</div>
           ${starter ? mkStats(starter, true) : ''}
           ${relievers.length ? `<div class="pf-relievers">${relievers.map(p => mkStats(p, false)).join('')}</div>` : ''}
         </div>`;
@@ -1143,6 +1180,14 @@ export function gAutoMulti() {
   autoMultiNext();
 }
 
+export function gAutoAll() {
+  const sched = LEAGUE.schedule || [];
+  const unplayed = sched.filter(g => !g.played).length;
+  if (unplayed === 0) { alert('No unplayed games remaining.'); return; }
+  autoMultiRemaining = unplayed;
+  autoMultiNext();
+}
+
 function autoMultiNext() {
   if (autoMultiRemaining <= 0) {
     autoMultiRemaining = 0;
@@ -1177,7 +1222,7 @@ export function gSetDelay(v) {
 // ── Helpers ──
 function pushFeed(icon, label) {
   G.eventFeed.unshift({ icon, label });
-  if (G.eventFeed.length > 8) G.eventFeed.length = 8;
+  if (G.eventFeed.length > 12) G.eventFeed.length = 12;
 }
 
 function getFatigue(pitcher) {
@@ -1271,37 +1316,42 @@ function advancePlayoffBracket(series) {
   if (series.nextSeriesId) {
     const nextSeries = p.series.find(s => s.id === series.nextSeriesId);
     if (nextSeries) {
+      const seedMap = p.seedMap || {};
+      const winnerSeed = seedMap[winner] ?? 99;
       if (series.nextSeriesSlot === 'higher') {
         nextSeries.higherSeedId = winner;
+        nextSeries.higherSeed = winnerSeed;
       } else if (series.nextSeriesSlot === 'lower') {
         nextSeries.lowerSeedId = winner;
+        nextSeries.lowerSeed = winnerSeed;
       } else {
-        // CS and WS: determine higher/lower by regular season win%
-        // For CS: two DS winners compete; for WS: two CS winners compete
+        // CS and WS: determine higher/lower by original playoff seed number
         if (nextSeries.higherSeedId === null && nextSeries.lowerSeedId === null) {
           nextSeries.higherSeedId = winner;
-        } else if (nextSeries.higherSeedId === null) {
-          // Compare with existing team
-          const existingPct = getTeamWinPctById(nextSeries.lowerSeedId);
-          const winnerPct   = getTeamWinPctById(winner);
-          if (winnerPct >= existingPct) {
-            nextSeries.higherSeedId = winner;
-          } else {
-            nextSeries.higherSeedId = winner;
-            // swap: existing lower becomes lower, winner becomes higher? No — higher = better record
-            // winner has lower pct, so existing lowerSeedId should be higher
-            nextSeries.higherSeedId = nextSeries.lowerSeedId;
-            nextSeries.lowerSeedId  = winner;
-          }
+          nextSeries.higherSeed = winnerSeed;
         } else if (nextSeries.lowerSeedId === null) {
-          const existingPct = getTeamWinPctById(nextSeries.higherSeedId);
-          const winnerPct   = getTeamWinPctById(winner);
-          if (winnerPct > existingPct) {
-            // winner has better record — becomes new higher seed
+          const existingSeed = nextSeries.higherSeed ?? 99;
+          if (winnerSeed < existingSeed) {
+            // winner has better seed — bump existing to lower slot
             nextSeries.lowerSeedId  = nextSeries.higherSeedId;
+            nextSeries.lowerSeed    = nextSeries.higherSeed;
             nextSeries.higherSeedId = winner;
+            nextSeries.higherSeed   = winnerSeed;
           } else {
             nextSeries.lowerSeedId = winner;
+            nextSeries.lowerSeed   = winnerSeed;
+          }
+        } else if (nextSeries.higherSeedId === null) {
+          const existingSeed = nextSeries.lowerSeed ?? 99;
+          if (winnerSeed <= existingSeed) {
+            nextSeries.higherSeedId = winner;
+            nextSeries.higherSeed   = winnerSeed;
+          } else {
+            // winner is a worse seed — swap: existing becomes higher
+            nextSeries.higherSeedId = nextSeries.lowerSeedId;
+            nextSeries.higherSeed   = nextSeries.lowerSeed;
+            nextSeries.lowerSeedId  = winner;
+            nextSeries.lowerSeed    = winnerSeed;
           }
         }
       }
@@ -1331,8 +1381,9 @@ function playoffAutoNext() {
   if (sIdx === null || sIdx === undefined) {
     // Series just finished — find next unfinished in current round (for autoAll)
     if (!p._autoAll) { playoffSeriesAutoRemaining = 0; window.nav('playoffs'); return; }
-    const idx = p.series.findIndex(s => s.round === p.round && s.winner == null && s.higherSeedId != null && s.lowerSeedId != null);
-    if (idx === -1) { playoffSeriesAutoRemaining = 0; p._autoAll = false; saveLeague(); window.nav('playoffs'); return; }
+    const targetRound = p._autoRound || p.round;
+    const idx = p.series.findIndex(s => s.round === targetRound && s.winner == null && s.higherSeedId != null && s.lowerSeedId != null);
+    if (idx === -1) { playoffSeriesAutoRemaining = 0; p._autoAll = false; p._autoRound = null; saveLeague(); window.nav('playoffs'); return; }
     sIdx = idx;
     p.activeSeriesIdx = sIdx;
     // Reset counter for the new series
@@ -1355,6 +1406,7 @@ function playoffAutoNext() {
     return;
   }
   playoffSeriesAutoRemaining--;
+  playoffIsAutoMode = true;
 
   const gameNum = series.games.length + 1;
   const { homeId, awayId } = getGameHomeAway(series, gameNum);
@@ -1377,6 +1429,8 @@ export function playoffPlayNext(seriesIdx) {
   p.activeSeriesIdx = seriesIdx;
   p._autoAll = false;
   playoffSeriesAutoRemaining = 0;
+  playoffIsAutoMode = false;
+  playoffCurrentSeriesIdx = seriesIdx;
   saveLeague();
   const gameNum = series.games.length + 1;
   const { homeId, awayId } = getGameHomeAway(series, gameNum);
@@ -1393,6 +1447,19 @@ export function playoffAutoSeries(seriesIdx) {
   p.activeSeriesIdx = seriesIdx;
   p._autoAll = false;
   playoffSeriesAutoRemaining = series.seriesLength;
+  saveLeague();
+  playoffAutoNext();
+}
+
+export function playoffAutoRound(roundKey) {
+  if (!LEAGUE.playoffs) return;
+  const p = LEAGUE.playoffs;
+  const nextIdx = p.series.findIndex(s => s.round === roundKey && s.winner == null && s.higherSeedId != null && s.lowerSeedId != null);
+  if (nextIdx === -1) { window.nav('playoffs'); return; }
+  p.activeSeriesIdx = nextIdx;
+  p._autoAll = true;
+  p._autoRound = roundKey;
+  playoffSeriesAutoRemaining = p.series[nextIdx].seriesLength;
   saveLeague();
   playoffAutoNext();
 }

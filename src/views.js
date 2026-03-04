@@ -15,10 +15,9 @@ let sortDir = -1;
 let schedBuildMode = false;
 let schedShowLoad = false;
 let schedTeamFilter = '';
-let schedMode = 'intra';          // 'intra' | 'outside'
-let schedIntraCounts = new Map(); // divName → intra-series count
-let schedCrossCounts = new Map(); // 'divA::divB' (sorted) → cross-series count
-let schedOutsideFirst = null;     // first-selected div in outside mode
+let schedRows = [{ thisTeam: null, opponent: null, count: 1 }];
+let schedDragging = null;
+let schedIntraCount = 0;
 
 // ====================================================================
 // NAVIGATION
@@ -907,8 +906,11 @@ export function renderPlayersTable() {
     return;
   }
 
+  const tfoot = tbl?.querySelector('tfoot') || (() => { const f = document.createElement('tfoot'); tbl?.appendChild(f); return f; })();
+
   if (isPitView) {
-    tbody.innerHTML = players.filter(p => p.type === 'pitcher').map(p => {
+    const pitchers = players.filter(p => p.type === 'pitcher');
+    tbody.innerHTML = pitchers.map(p => {
       const era  = (p.career.ip || 0) > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2);
       const whip = (p.career.ip || 0) > 0 ? ((p.career.bb + p.career.h) / p.career.ip).toFixed(2) : '—';
       const abF  = (p.career.bf || 0) - (p.career.bb || 0) - (p.career.hbp || 0);
@@ -938,6 +940,32 @@ export function renderPlayersTable() {
         <td>${baa}</td>
       </tr>`;
     }).join('');
+    if (playerFilter === 'PIT' && pitchers.length > 0) {
+      const tot = pitchers.reduce((s, p) => ({
+        w: s.w + (p.career.w || 0), l: s.l + (p.career.l || 0),
+        gs: s.gs + (p.career.gs || 0), g: s.g + (p.career.g || 0),
+        cg: s.cg + (p.career.cg || 0), sho: s.sho + (p.career.sho || 0),
+        sv: s.sv + (p.career.sv || 0), svo: s.svo + (p.career.svo || 0),
+        ip: s.ip + (p.career.ip || 0), h: s.h + (p.career.h || 0),
+        r: s.r + (p.career.r || 0), er: s.er + (p.career.er || 0),
+        hr: s.hr + (p.career.hr || 0), hbp: s.hbp + (p.career.hbp || 0),
+        bb: s.bb + (p.career.bb || 0), k: s.k + (p.career.k || 0),
+        bf: s.bf + (p.career.bf || 0),
+      }), { w:0,l:0,gs:0,g:0,cg:0,sho:0,sv:0,svo:0,ip:0,h:0,r:0,er:0,hr:0,hbp:0,bb:0,k:0,bf:0 });
+      const tEra  = tot.ip > 0 ? ((tot.er / tot.ip) * 9).toFixed(2) : '—';
+      const tWhip = tot.ip > 0 ? ((tot.bb + tot.h) / tot.ip).toFixed(2) : '—';
+      const tAbF  = tot.bf - tot.bb - tot.hbp;
+      const tBaa  = tAbF > 0 ? (tot.h / tAbF).toFixed(3) : '—';
+      tfoot.innerHTML = `<tr class="players-totals-row">
+        <td colspan="3"><b>Totals / Weighted Avg</b></td>
+        <td>${tot.w}</td><td>${tot.l}</td><td>${tEra}</td>
+        <td>${tot.gs}</td><td>${tot.g}</td><td>${tot.cg}</td><td>${tot.sho}</td>
+        <td>${tot.sv}</td><td>${tot.svo}</td><td>${formatIP(tot.ip)}</td>
+        <td>${tot.h}</td><td>${tot.r}</td><td>${tot.er}</td><td>${tot.hr}</td>
+        <td>${tot.hbp}</td><td>${tot.bb}</td><td>${tot.k}</td>
+        <td>${tWhip}</td><td>${tBaa}</td>
+      </tr>`;
+    } else { tfoot.innerHTML = ''; }
   } else {
     tbody.innerHTML = players.map(p => {
       const avg  = p.type === 'batter'  ? battingAvg(p).toFixed(3) : '—';
@@ -956,6 +984,23 @@ export function renderPlayersTable() {
         <td>${whip}</td>
       </tr>`;
     }).join('');
+    if (playerFilter === 'BAT') {
+      const batters = players.filter(p => p.type === 'batter');
+      if (batters.length > 0) {
+        const tot = batters.reduce((s, p) => ({
+          pa: s.pa + (p.career.pa || 0), ab: s.ab + (p.career.ab || 0),
+          h: s.h + (p.career.h || 0), hr: s.hr + (p.career.hr || 0),
+          rbi: s.rbi + (p.career.rbi || 0), k: s.k + (p.career.k || 0),
+        }), { pa:0, ab:0, h:0, hr:0, rbi:0, k:0 });
+        const tAvg = tot.ab > 0 ? (tot.h / tot.ab).toFixed(3) : '—';
+        tfoot.innerHTML = `<tr class="players-totals-row">
+          <td colspan="3"><b>Totals / Weighted Avg</b></td>
+          <td>${tot.pa}</td><td>${tAvg}</td>
+          <td>${tot.hr}</td><td>${tot.rbi}</td><td>${tot.k}</td>
+          <td>—</td><td>—</td>
+        </tr>`;
+      } else { tfoot.innerHTML = ''; }
+    } else { tfoot.innerHTML = ''; }
   }
 }
 
@@ -987,6 +1032,8 @@ export function clearSeason() {
     t.w = 0; t.l = 0; t.runsFor = 0; t.runsAgainst = 0;
   });
   LEAGUE.gamesPlayed = 0;
+  LEAGUE.playoffs = null;
+  LEAGUE.schedule = [];
   saveLeague();
   renderHome();
 }
@@ -1146,6 +1193,20 @@ function renderScheduleView(cont) {
   cont.innerHTML = html;
 }
 
+function calcIntraGames() {
+  if (schedIntraCount <= 0) return 0;
+  const counts = {};
+  LEAGUE.teams.forEach(t => { counts[t.division] = (counts[t.division] || 0) + 1; });
+  return Object.values(counts).reduce((sum, n) => sum + schedIntraCount * n * (n - 1), 0);
+}
+
+function calcRowGames(row) {
+  if (!row.thisTeam || !row.opponent) return 0;
+  const a = LEAGUE.teams.filter(t => t.division === row.thisTeam).length;
+  const b = LEAGUE.teams.filter(t => t.division === row.opponent).length;
+  return row.thisTeam === row.opponent ? row.count * a * (a - 1) : row.count * 2 * a * b;
+}
+
 function buildLeagueMap() {
   const leagueOrder = ['American League', 'National League'];
   const leagueMap = new Map();
@@ -1166,114 +1227,90 @@ function buildLeagueMap() {
   return { leagueMap, sortedLeagues };
 }
 
-function crossKey(a, b) { return [a, b].sort().join('::'); }
-
-function schedGameCount(teams) {
-  let total = 0;
-  for (let i = 0; i < teams.length; i++) {
-    for (let j = 0; j < teams.length; j++) {
-      if (i === j) continue;
-      const dA = teams[i].division, dB = teams[j].division;
-      total += dA === dB
-        ? (schedIntraCounts.get(dA) || 0)
-        : (schedCrossCounts.get(crossKey(dA, dB)) || 0);
-    }
-  }
-  return total;
-}
-
-function schedPreviewLines(teams) {
-  const lines = [];
-  for (let i = 0; i < teams.length; i++) {
-    for (let j = 0; j < teams.length; j++) {
-      if (i === j) continue;
-      const dA = teams[i].division, dB = teams[j].division;
-      const count = dA === dB
-        ? (schedIntraCounts.get(dA) || 0)
-        : (schedCrossCounts.get(crossKey(dA, dB)) || 0);
-      if (count > 0)
-        lines.push(`${teams[i].name}  @  ${teams[j].name}${count > 1 ? `  ×${count}` : ''}`);
-    }
-  }
-  return lines;
-}
-
 function renderScheduleBuildMode(cont) {
   const { leagueMap, sortedLeagues } = buildLeagueMap();
+  const intraGames = calcIntraGames();
+  const totalGames = intraGames + schedRows.reduce((sum, r) => sum + calcRowGames(r), 0);
+  const hasAnyRow = schedIntraCount > 0 || schedRows.some(r => r.thisTeam || r.opponent);
 
-  // All teams that participate in any game
-  const activeDivs = new Set([
-    ...[...schedIntraCounts.entries()].filter(([,n]) => n > 0).map(([d]) => d),
-    ...[...schedCrossCounts.entries()].filter(([,n]) => n > 0).flatMap(([k]) => k.split('::')),
-  ]);
-  const selectedTeams = LEAGUE.teams.filter(t => activeDivs.has(t.division));
-  const totalGames = schedGameCount(selectedTeams);
+  const mkDropZone = (rowIdx, col, value) => {
+    const filled = !!value;
+    return `<div class="sched-drop-zone${filled ? ' filled' : ''}"
+      ondragover="event.preventDefault()"
+      ondrop="schedDrop(${rowIdx},'${col}')"
+      ondragenter="this.classList.add('drag-over')"
+      ondragleave="this.classList.remove('drag-over')">
+      <span style="pointer-events:none">${value || 'Drop division here'}</span>
+    </div>`;
+  };
 
-  // Hint text
-  const hint = schedMode === 'intra'
-    ? 'Each press adds one home-and-away series within that division.'
-    : schedOutsideFirst
-      ? `<b>${schedOutsideFirst}</b> selected — click another division to schedule cross-division games, or click it again to cancel.`
-      : 'Click a division to select it, then click another to add cross-division games.';
+  const countSelect = (rowIdx, count) =>
+    `<select class="sched-count-select" onchange="schedSetCount(${rowIdx},this.value)">
+      ${Array.from({length:13},(_,i)=>`<option value="${i+1}"${count===i+1?' selected':''}>${i+1}</option>`).join('')}
+    </select>`;
 
-  let html = `
-  <div class="sched-mode-bar">
-    <button class="sched-mode-btn${schedMode === 'intra' ? ' active' : ''}" onclick="schedSetMode('intra')">Intra Division</button>
-    <button class="sched-mode-btn${schedMode === 'outside' ? ' active' : ''}" onclick="schedSetMode('outside')">Outside Division</button>
-  </div>
-  <div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted);margin-bottom:14px;line-height:1.7">${hint}</div>
-  <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
-    <button class="btn sm primary" onclick="schedGenerate()"${totalGames === 0 ? ' disabled' : ''}>Save Schedule</button>
-    <button class="btn sm" onclick="schedClear()"${totalGames === 0 ? ' disabled' : ''}>Clear Schedule</button>
-    <button class="btn sm" onclick="schedCancel()">Cancel</button>
-    <span style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--muted)">
-      ${selectedTeams.length} team${selectedTeams.length !== 1 ? 's' : ''} &nbsp;·&nbsp; <b>${totalGames}</b> game${totalGames !== 1 ? 's' : ''}
-    </span>
-  </div>`;
-
-  for (const leagueName of sortedLeagues) {
-    html += `<div class="section-title" style="margin-bottom:8px">${leagueName}</div><div class="div-toggle-row">`;
-    const divMap = leagueMap.get(leagueName);
-    for (const divName of [...divMap.keys()].sort()) {
-      const teamCount = divMap.get(divName).length;
-
-      let badge, extraClass = '', clickFn;
-      if (schedMode === 'intra') {
-        const n = schedIntraCounts.get(divName) || 0;
-        badge = n > 0 ? `<span class="div-btn-count">×${n}</span>` : `<span class="div-btn-count dim">${teamCount}</span>`;
-        clickFn = `schedClickDiv('${divName}')`;
-      } else {
-        const isFirst = schedOutsideFirst === divName;
-        // Count cross series involving this division
-        let cx = 0;
-        for (const [key, n] of schedCrossCounts) { if (key.split('::').includes(divName)) cx += n; }
-        extraClass = isFirst ? ' first-sel' : '';
-        badge = isFirst
-          ? `<span class="div-btn-count first">1st</span>`
-          : cx > 0
-            ? `<span class="div-btn-count">×${cx}</span>`
-            : `<span class="div-btn-count dim">${teamCount}</span>`;
-        clickFn = `schedClickOutside('${divName}')`;
-      }
-      html += `<button class="div-toggle-btn${extraClass}" onclick="${clickFn}">${divName} ${badge}</button>`;
+  let divPanelHtml = '';
+  for (const lg of sortedLeagues) {
+    divPanelHtml += `<div class="sched-div-panel-league">${lg}</div>`;
+    for (const divName of [...leagueMap.get(lg).keys()].sort()) {
+      const n = leagueMap.get(lg).get(divName).length;
+      divPanelHtml += `<div class="div-toggle-btn sched-div-tile" draggable="true" ondragstart="schedDragStart('${divName}')">
+        ${divName} <span class="div-btn-count dim" style="pointer-events:none">${n}</span>
+      </div>`;
     }
-    html += '</div>';
   }
 
-  const lines = schedPreviewLines(selectedTeams);
-  if (lines.length > 0) {
-    html += `<div class="section-title" style="margin-top:24px;margin-bottom:8px">Game Preview</div>
-    <textarea class="sched-preview" readonly>${lines.join('\n')}</textarea>`;
-  }
+  let rowsHtml = schedRows.map((row, i) => {
+    const isLast = i === schedRows.length - 1;
+    const games = calcRowGames(row);
+    return `<div class="sched-series-row">
+      ${mkDropZone(i, 'this', row.thisTeam)}
+      ${mkDropZone(i, 'opp', row.opponent)}
+      ${countSelect(i, row.count)}
+      <span class="sched-row-games">${games > 0 ? games + ' gm' : ''}</span>
+      ${!isLast ? `<button class="sched-remove-row" onclick="schedRemoveRow(${i})">✕</button>` : '<span class="sched-remove-row"></span>'}
+    </div>`;
+  }).join('');
 
-  cont.innerHTML = html;
+  const intraSelect = `<select class="sched-count-select sched-intra-select" onchange="schedSetIntraCount(this.value)">
+    <option value="0"${schedIntraCount===0?' selected':''}></option>
+    ${Array.from({length:13},(_,i)=>`<option value="${i+1}"${schedIntraCount===i+1?' selected':''}>${i+1}</option>`).join('')}
+  </select>`;
+
+  cont.innerHTML = `
+    <div class="sched-builder-layout">
+      <div class="sched-div-panel">
+        <div class="sched-div-panel-title">Divisions</div>
+        ${divPanelHtml}
+      </div>
+      <div class="sched-intra-col">
+        <div class="sched-div-panel-title">Intra-Division</div>
+        <div class="sched-intra-body">
+          <div class="sched-intra-label">Games vs. each division rival</div>
+          ${intraSelect}
+          ${intraGames > 0 ? `<div class="sched-intra-preview">${intraGames} games</div>` : ''}
+        </div>
+      </div>
+      <div class="sched-series-area">
+        <div class="sched-series-header">
+          <span>This Team</span><span>Opponent</span><span>Games</span><span></span><span></span>
+        </div>
+        ${rowsHtml}
+        <div class="sched-builder-actions">
+          <button class="btn sm primary" onclick="schedGenerate()"${totalGames === 0 ? ' disabled' : ''}>Save Schedule</button>
+          <button class="btn sm" onclick="schedClear()"${!hasAnyRow ? ' disabled' : ''}>Clear</button>
+          <button class="btn sm" onclick="schedCancel()">Cancel</button>
+          <span class="sched-total-games">${totalGames > 0 ? `<b>${totalGames}</b> total games &nbsp;·&nbsp; <b>${Math.round(totalGames * 2 / LEAGUE.teams.length)}</b> per team` : ''}</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 function resetSchedState() {
-  schedMode = 'intra';
-  schedIntraCounts = new Map();
-  schedCrossCounts = new Map();
-  schedOutsideFirst = null;
+  schedRows = [{ thisTeam: null, opponent: null, count: 1 }];
+  schedDragging = null;
+  schedIntraCount = 0;
 }
 
 export function schedDeleteAll() {
@@ -1319,48 +1356,76 @@ export function schedDeleteSaved(idx) {
   renderSchedule();
 }
 
-export function schedSetMode(mode) {
-  schedMode = mode;
-  schedOutsideFirst = null;
+export function schedDragStart(divName) {
+  schedDragging = divName;
+}
+
+export function schedDrop(rowIdx, col) {
+  if (!schedDragging) return;
+  const row = schedRows[rowIdx];
+  if (!row) return;
+  if (col === 'this') row.thisTeam = schedDragging;
+  else row.opponent = schedDragging;
+  // Auto-add empty row when last row has both columns filled
+  const last = schedRows[schedRows.length - 1];
+  if (last.thisTeam && last.opponent) schedRows.push({ thisTeam: null, opponent: null, count: 1 });
+  schedDragging = null;
   renderSchedule();
 }
 
-export function schedClickDiv(divName) {
-  schedIntraCounts.set(divName, (schedIntraCounts.get(divName) || 0) + 1);
+export function schedSetCount(rowIdx, count) {
+  if (schedRows[rowIdx]) schedRows[rowIdx].count = +count;
   renderSchedule();
 }
 
-export function schedClickOutside(divName) {
-  if (schedOutsideFirst === null) {
-    schedOutsideFirst = divName;
-  } else if (schedOutsideFirst === divName) {
-    schedOutsideFirst = null; // clicking highlighted div de-selects
-  } else {
-    const key = crossKey(schedOutsideFirst, divName);
-    schedCrossCounts.set(key, (schedCrossCounts.get(key) || 0) + 1);
-    schedOutsideFirst = null;
-  }
+export function schedSetIntraCount(val) {
+  schedIntraCount = +val;
+  renderSchedule();
+}
+
+export function schedRemoveRow(rowIdx) {
+  schedRows.splice(rowIdx, 1);
+  if (schedRows.length === 0) schedRows.push({ thisTeam: null, opponent: null, count: 1 });
   renderSchedule();
 }
 
 export function schedGenerate() {
-  const activeDivs = new Set([
-    ...[...schedIntraCounts.entries()].filter(([,n]) => n > 0).map(([d]) => d),
-    ...[...schedCrossCounts.entries()].filter(([,n]) => n > 0).flatMap(([k]) => k.split('::')),
-  ]);
-  const selectedTeams = LEAGUE.teams.filter(t => activeDivs.has(t.division));
-  if (selectedTeams.length < 2) return;
+  const validRows = schedRows.filter(r => r.thisTeam && r.opponent && r.count > 0);
+  if (validRows.length === 0 && schedIntraCount <= 0) return;
 
   const schedule = [];
-  for (let i = 0; i < selectedTeams.length; i++) {
-    for (let j = 0; j < selectedTeams.length; j++) {
-      if (i === j) continue;
-      const dA = selectedTeams[i].division, dB = selectedTeams[j].division;
-      const count = dA === dB
-        ? (schedIntraCounts.get(dA) || 0)
-        : (schedCrossCounts.get(crossKey(dA, dB)) || 0);
-      for (let k = 0; k < count; k++)
-        schedule.push({ awayId: selectedTeams[i].id, homeId: selectedTeams[j].id, played: false, awayScore: null, homeScore: null });
+
+  // Intra-division games for all divisions
+  if (schedIntraCount > 0) {
+    const divMap = {};
+    LEAGUE.teams.forEach(t => { if (!divMap[t.division]) divMap[t.division] = []; divMap[t.division].push(t); });
+    for (const teams of Object.values(divMap)) {
+      for (let i = 0; i < teams.length; i++)
+        for (let j = 0; j < teams.length; j++) {
+          if (i === j) continue;
+          for (let k = 0; k < schedIntraCount; k++)
+            schedule.push({ awayId: teams[i].id, homeId: teams[j].id, played: false, awayScore: null, homeScore: null });
+        }
+    }
+  }
+
+  for (const row of validRows) {
+    const aTeams = LEAGUE.teams.filter(t => t.division === row.thisTeam);
+    const bTeams = LEAGUE.teams.filter(t => t.division === row.opponent);
+    if (row.thisTeam === row.opponent) {
+      for (let i = 0; i < aTeams.length; i++)
+        for (let j = 0; j < aTeams.length; j++) {
+          if (i === j) continue;
+          for (let k = 0; k < row.count; k++)
+            schedule.push({ awayId: aTeams[i].id, homeId: aTeams[j].id, played: false, awayScore: null, homeScore: null });
+        }
+    } else {
+      for (const a of aTeams) for (const b of bTeams)
+        for (let k = 0; k < row.count; k++)
+          schedule.push({ awayId: a.id, homeId: b.id, played: false, awayScore: null, homeScore: null });
+      for (const b of bTeams) for (const a of aTeams)
+        for (let k = 0; k < row.count; k++)
+          schedule.push({ awayId: b.id, homeId: a.id, played: false, awayScore: null, homeScore: null });
     }
   }
   for (let i = schedule.length - 1; i > 0; i--) {
@@ -1368,10 +1433,9 @@ export function schedGenerate() {
     [schedule[i], schedule[j]] = [schedule[j], schedule[i]];
   }
   const name = prompt('Name this schedule:', LEAGUE.scheduleName || `${LEAGUE.season} Season`);
-  if (name === null) return; // cancelled — don't save
+  if (name === null) return;
   LEAGUE.schedule = schedule;
   LEAGUE.scheduleName = name.trim() || `${LEAGUE.season} Season`;
-  // Save to library (update existing entry by name, or add new)
   if (!LEAGUE.savedSchedules) LEAGUE.savedSchedules = [];
   const entry = { name: LEAGUE.scheduleName, games: schedule.map(g => ({ ...g })) };
   const existingIdx = LEAGUE.savedSchedules.findIndex(s => s.name === LEAGUE.scheduleName);
@@ -1517,7 +1581,10 @@ export function generatePlayoffs() {
   nlDsH.higherSeedId = nlSeeds[1].id; nlDsH.higherSeed = 2; nlDsH.lowerSeedId = null;
   nlDsI.higherSeedId = nlSeeds[0].id; nlDsI.higherSeed = 1; nlDsI.lowerSeedId = null;
 
-  LEAGUE.playoffs = { active: true, round: 'wildCard', series, activeSeriesIdx: null };
+  const seedMap = {};
+  alSeeds.forEach((t, i) => { seedMap[t.id] = i + 1; });
+  nlSeeds.forEach((t, i) => { seedMap[t.id] = i + 1; });
+  LEAGUE.playoffs = { active: true, round: 'wildCard', series, seedMap, activeSeriesIdx: null };
   saveLeague();
   renderPlayoffs();
 }
@@ -1602,7 +1669,7 @@ function mkSeriesBox(s, sIdx, playoffsObj) {
   const isPlaying = playoffsObj.activeSeriesIdx === sIdx && !isComplete;
 
   const mkTeamRow = (team, seed, wins, isWinner, isTbdSlot) => {
-    if (isTbdSlot || !team) return `<div class="playoff-team-row"><span class="playoff-seed-badge">${seed ?? '?'}</span><span class="playoff-tbd">TBD</span><span class="playoff-wins-count">—</span></div>`;
+    if (isTbdSlot || !team) return `<div class="playoff-team-row"><span class="playoff-seed-badge"></span><span class="playoff-tbd">TBD</span><span class="playoff-wins-count">—</span></div>`;
     return `<div class="playoff-team-row${isComplete ? (isWinner ? ' winner' : ' loser') : ''}">
       <span class="playoff-seed-badge">${seed ?? '?'}</span>
       ${teamLogoHtml(team, 18)}
@@ -1698,6 +1765,8 @@ function renderPlayoffBracket(cont, actions) {
 
   const findS = id => series.find(s => s.id === id);
   const sIdx  = id => series.findIndex(s => s.id === id);
+  const roundPlayable = key => series.some(s => s.round === key && s.winner == null && s.higherSeedId != null && s.lowerSeedId != null);
+  const roundLabel = (label, key) => `<div class="playoff-round-label">${label}${roundPlayable(key) ? `<button class="btn sm" style="margin-left:8px" onclick="playoffAutoRound('${key}')">Play Series</button>` : ''}</div>`;
 
   // AL seeds 1 & 2 for bye boxes
   const alWcA = findS('al-wc-a'); const alWcAIdx = sIdx('al-wc-a');
@@ -1724,7 +1793,7 @@ function renderPlayoffBracket(cont, actions) {
     <div class="playoffs-bracket">
 
       <div class="playoff-round-col">
-        <div class="playoff-round-label">Wild Card</div>
+        ${roundLabel('Wild Card', 'wildCard')}
         <div class="playoff-league-group">
           ${leagueLabel('American League')}
           <div class="playoff-pair">
@@ -1751,7 +1820,7 @@ function renderPlayoffBracket(cont, actions) {
       </div>
 
       <div class="playoff-round-col">
-        <div class="playoff-round-label">Division Series</div>
+        ${roundLabel('Division Series', 'divSeries')}
         <div class="playoff-league-group">
           <div class="playoff-pair" style="justify-content:center">
             ${mkSeriesBox(alDsC, alDsCIdx, p)}
@@ -1772,7 +1841,7 @@ function renderPlayoffBracket(cont, actions) {
       </div>
 
       <div class="playoff-round-col">
-        <div class="playoff-round-label">Championship Series</div>
+        ${roundLabel('Championship Series', 'champSeries')}
         <div class="playoff-league-group">
           <div class="playoff-pair" style="justify-content:center">
             ${mkSeriesBox(alCs, alCsIdx, p)}
@@ -1787,7 +1856,7 @@ function renderPlayoffBracket(cont, actions) {
       </div>
 
       <div class="playoff-round-col">
-        <div class="playoff-round-label">World Series</div>
+        ${roundLabel('World Series', 'worldSeries')}
         <div style="flex:1"></div>
         ${mkSeriesBox(ws, wsIdx, p)}
         ${wsWinnerTeam ? `<div style="margin-top:16px;text-align:center">

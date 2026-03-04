@@ -16,6 +16,23 @@ export function initLeague() {
         const logo = localStorage.getItem(`dlg-logo-${t.id}`);
         if (logo) t.logo = logo;
       });
+      // Restore saved schedules stored separately to avoid localStorage quota limits
+      try {
+        const schedData = localStorage.getItem('dlg-saved-schedules');
+        if (schedData) LEAGUE.savedSchedules = JSON.parse(schedData);
+        else LEAGUE.savedSchedules = LEAGUE.savedSchedules || [];
+      } catch(e) { LEAGUE.savedSchedules = []; }
+      // Migration: assign pitcher positions if any team has no CL
+      (LEAGUE.teams || []).forEach(t => {
+        if (!t.pitchers.some(p => p.pos === 'CL')) {
+          const n = t.pitchers.length;
+          t.pitchers.forEach((p, i) => {
+            if (n <= 4)      p.pos = i === 0 ? 'SP' : i === n - 1 ? 'CL' : 'RP';
+            else             p.pos = i < 5 ? 'SP' : i < 7 ? 'CL' : 'RP';
+          });
+        }
+      });
+      saveLeague();
       return;
     } catch(e) {}
   }
@@ -67,8 +84,11 @@ export function saveLeague() {
       localStorage.removeItem(`dlg-logo-${t.id}`);
     }
   });
-  // Save league data without logo blobs
-  const slim = { ...LEAGUE, teams: LEAGUE.teams.map(({ logo, ...rest }) => rest) };
+  // Save schedules to a separate key so the main payload stays within localStorage limits
+  try { localStorage.setItem('dlg-saved-schedules', JSON.stringify(LEAGUE.savedSchedules || [])); } catch(e) {}
+  // Save league data without logos or saved schedules
+  const { savedSchedules, ...leagueWithoutSchedules } = LEAGUE;
+  const slim = { ...leagueWithoutSchedules, teams: LEAGUE.teams.map(({ logo, ...rest }) => rest) };
   try {
     localStorage.setItem('diamond-league-v3', JSON.stringify(slim));
     const ind = document.getElementById('save-ind');
@@ -174,7 +194,7 @@ function mkPitcherFromCSV(row) {
   return {
     id: Math.random().toString(36).slice(2),
     name: `${row.firstName} ${row.lastName}`,
-    pos: /^(sp)$/i.test((row.position||'').trim()) ? 'SP' : /^(rp|lhp|rhp)$/i.test((row.position||'').trim()) ? 'RP' : 'SP',
+    pos: /^(sp)$/i.test((row.position||'').trim()) ? 'SP' : /^(cl|cp)$/i.test((row.position||'').trim()) ? 'CL' : /^(rp|lhp|rhp)$/i.test((row.position||'').trim()) ? 'RP' : 'SP',
     arch, type: 'pitcher',
     num: parseInt(row.num) || ri(99) + 1,
     emoji: EMOJIS[ri(EMOJIS.length)],
@@ -323,6 +343,10 @@ export function importFromCSV(text) {
     const rawPitchers = players.filter(isPitcher);
     const pitchers = rawPitchers.length > 0 ? rawPitchers.map(mkPitcherFromCSV)
       : [mkPitcher(), mkPitcher(), mkPitcher()];
+    // Ensure at least one CL — if none tagged, assign the last pitcher
+    if (pitchers.length > 0 && !pitchers.some(p => p.pos === 'CL')) {
+      pitchers[pitchers.length - 1].pos = 'CL';
+    }
 
     teams.push({
       id: teamId++, name: teamName, city, nickname,
