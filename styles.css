@@ -148,7 +148,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
   padding:20px;
 }
 .card-overlay.open { display:flex; }
-.card-wrap { position:relative; max-width:1100px; width:100%; }
+.card-wrap { position:relative; max-width:1500px; width:100%; }
 .card-close { position:absolute; top:-16px; right:-16px; width:32px; height:32px; background:var(--panel); border:2px solid var(--ink); border-radius:50%; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center; z-index:10; }
 
 .baseball-card {
@@ -203,7 +203,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .card-player-arch { font-family:'IBM Plex Mono',monospace; font-size:0.58rem; color:#555; text-align:center; margin-top:3px; }
 .card-number { margin-top:auto; font-family:'Playfair Display',serif; font-size:3rem; font-weight:900; color:#222; text-align:right; line-height:1; }
 
-.card-right { padding:24px; display:flex; flex-direction:column; gap:18px; }
+.card-right { padding:24px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; }
 .card-right-top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
 .card-edit-name { border:none; border-bottom:2px solid var(--line); background:transparent; font-family:'Playfair Display',serif; font-size:1.4rem; font-weight:700; width:100%; padding:2px 0; outline:none; transition:border-color 0.15s; }
 .card-edit-name:focus { border-bottom-color:var(--ink); }
@@ -222,9 +222,9 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 /* Season-by-season log */
 .season-log { }
 .season-log-table { width:100%; border-collapse:collapse; }
-.season-log-table th { font-family:'IBM Plex Mono',monospace; font-size:0.56rem; letter-spacing:1px; text-transform:uppercase; color:var(--muted); padding:5px 6px; text-align:center; border-bottom:1px solid var(--line); }
+.season-log-table th { font-family:'Roboto Condensed',sans-serif; font-size:0.62rem; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; color:var(--muted); padding:5px 6px; text-align:center; border-bottom:1px solid var(--line); }
 .season-log-table th:first-child { text-align:left; }
-.season-log-table td { font-family:'IBM Plex Mono',monospace; font-size:0.72rem; padding:5px 6px; border-bottom:1px solid #f5f5f5; text-align:center; }
+.season-log-table td { font-family:'Roboto Condensed',sans-serif; font-size:0.80rem; padding:5px 6px; border-bottom:1px solid #f5f5f5; text-align:center; }
 .season-log-table td:first-child { text-align:left; }
 .season-log-table tr:last-child td { border-bottom:none; }
 .season-log-table .total-row td { font-weight:600; border-top:1px solid var(--line); }
@@ -255,12 +255,12 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .filter-tab.active { background:var(--ink); color:var(--chalk); }
 
 .players-table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:4px; overflow:hidden; }
-.players-table th { font-family:'IBM Plex Mono',monospace; font-size:0.56rem; letter-spacing:1px; text-transform:uppercase; color:var(--muted); padding:9px 12px; text-align:center; border-bottom:2px solid var(--line); background:var(--chalk); cursor:pointer; transition:color 0.13s; white-space:nowrap; }
+.players-table th { font-family:'Roboto Condensed',sans-serif; font-size:0.62rem; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; color:var(--muted); padding:9px 12px; text-align:center; border-bottom:2px solid var(--line); background:var(--chalk); cursor:pointer; transition:color 0.13s; white-space:nowrap; }
 .players-table th:first-child, .players-table th:nth-child(2), .players-table th:nth-child(3) { text-align:left; }
 .players-table th:hover { color:var(--ink); }
 .players-table th.sort-asc::after { content:' ↑'; }
 .players-table th.sort-desc::after { content:' ↓'; }
-.players-table td { padding:8px 12px; border-bottom:1px solid #f5f5f5; font-size:0.8rem; text-align:center; font-family:'IBM Plex Mono',monospace; }
+.players-table td { padding:8px 12px; border-bottom:1px solid #f5f5f5; font-size:0.82rem; text-align:center; font-family:'Roboto Condensed',sans-serif; }
 .players-table td:first-child, .players-table td:nth-child(2), .players-table td:nth-child(3) { text-align:left; font-family:'IBM Plex Sans',sans-serif; }
 .players-table tr:hover td { background:#fafafa; cursor:pointer; }
 .players-table tr:last-child td { border-bottom:none; }

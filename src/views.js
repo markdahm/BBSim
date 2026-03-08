@@ -243,15 +243,16 @@ function renderBatterTableContent() {
     </tr>`;
   }).join('');
 
-  const hintHtml = unsorted ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;margin-left:8px">drag to reorder</span>` : '';
+  const hintHtml = unsorted ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:0.60rem;color:#bbb;margin-bottom:6px">drag rows to reorder</div>` : '';
   const container = document.getElementById('roster-table-body');
   container.innerHTML = `
+    ${hintHtml}
     <div style="overflow-x:auto">
       <table class="players-table" style="font-size:0.72rem;min-width:1000px">
         <thead><tr>
           <th>#</th>
           <th style="text-align:left">Player</th>
-          <th style="text-align:left">Pos${hintHtml}</th>
+          <th style="text-align:left">Pos</th>
           ${th('g','G')}${th('ab','AB')}${th('r','R')}${th('h','H')}
           ${th('1b','1B')}${th('2b','2B')}${th('3b','3B')}${th('hr','HR')}${th('rbi','RBI')}
           ${th('bb','BB')}${th('k','K')}${th('sb','SB')}${th('cs','CS')}
@@ -336,7 +337,7 @@ function renderPitcherTableContent() {
       <td>${era}</td><td>${p.career.w||0}</td><td>${p.career.l||0}</td><td>${whip}</td>
       <td>${p.career.g||0}</td><td>${p.career.gs||0}</td><td>${p.career.cg||0}</td><td>${p.career.sho||0}</td>
       <td>${fmtIP(p.career.ip)}</td><td>${p.career.k||0}</td><td>${p.career.bb||0}</td>
-      <td>${p.career.sv||0}</td><td>${p.career.svo||0}</td>
+      <td>${p.career.svo||0}</td><td>${p.career.sv||0}</td><td>${(p.career.svo||0)-(p.career.sv||0)}</td>
       <td>${p.career.h||0}</td><td>${p.career.r||0}</td><td>${p.career.er||0}</td>
       <td>${p.career.hr||0}</td><td>${p.career.hbp||0}</td>
       <td>${k9}</td><td>${baa}</td>
@@ -357,17 +358,18 @@ function renderPitcherTableContent() {
     rows = pitchers.map(mkRow).join('');
   }
 
-  const hintHtml = unsorted ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.48rem;color:#bbb;margin-left:8px">drag to reorder</span>` : '';
+  const hintHtml = unsorted ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:0.60rem;color:#bbb;margin-bottom:6px">drag rows to reorder</div>` : '';
   const container = document.getElementById('roster-table-body');
   container.innerHTML = `
+    ${hintHtml}
     <div style="overflow-x:auto">
       <table class="players-table" style="font-size:0.72rem;min-width:1000px">
         <thead><tr>
-          <th style="text-align:left">Player</th>
-          <th style="text-align:left">Role${hintHtml}</th>
+          <th style="text-align:left;min-width:160px">Player</th>
+          <th style="text-align:left;width:60px">Role</th>
           ${th('era','ERA')}${th('w','W')}${th('l','L')}${th('whip','WHIP')}
           ${th('g','G')}${th('gs','GS')}${th('cg','CG')}${th('sho','SHO')}
-          ${th('ip','IP')}${th('k','K')}${th('bb','BB')}${th('sv','SV')}${th('svo','SVO')}
+          ${th('ip','IP')}${th('k','K')}${th('bb','BB')}${th('svo','SVO')}${th('sv','SV')}${th('bs','BS')}
           ${th('h','H')}${th('r','R')}${th('er','ER')}${th('hr','HR')}${th('hbp','HBP')}
           ${th('k9','K/9')}${th('baa','BAA')}
           <th></th>
@@ -549,7 +551,7 @@ function renderCard(t, p) {
   // Ratings (0-100 scale)
   const ratings = isBatter ? [
     { l:'Contact', v: Math.round((1 - (p.kPct / 0.40)) * 100) },
-    { l:'Power',   v: Math.round((p.hrPct / 0.112) * 100) },
+    { l:'Power',   v: Math.round((p.hrPct / 0.065) * 100) },
     { l:'Patience',v: Math.round((p.bbPct / 0.18) * 100) },
     { l:'Speed',   v: Math.round((p.sbRate / 0.15) * 100) },
   ] : [
@@ -634,13 +636,13 @@ function renderCard(t, p) {
     <div>
       <div class="stats-section-title">Career Highlights</div>
       <div style="overflow-x:auto">
-        <table class="season-log-table" style="min-width:680px">
+        <table class="season-log-table" style="min-width:900px">
           <thead><tr>
             <th>ERA</th><th>W</th><th>L</th><th>WHIP</th>
             <th>G</th><th>GS</th><th>CG</th><th>SHO</th>
-            <th>IP</th><th>K</th><th>BB</th><th>SV</th>
+            <th>IP</th><th>K</th><th>BB</th><th>SVO</th>
             <th>H</th><th>R</th><th>ER</th><th>HR</th>
-            <th>HBP</th><th>SVO</th><th>K/9</th><th>BAA</th>
+            <th>HBP</th><th>SV</th><th>BS</th><th>K/9</th><th>BAA</th>
           </tr></thead>
           <tbody><tr>
             <td>${p.career.ip > 0 ? ((p.career.er / p.career.ip) * 9).toFixed(2) : p.era.toFixed(2)}</td>
@@ -654,13 +656,14 @@ function renderCard(t, p) {
             <td>${fmtIP(p.career.ip)}</td>
             <td>${p.career.k || 0}</td>
             <td>${p.career.bb || 0}</td>
-            <td>${p.career.sv || 0}</td>
+            <td>${p.career.svo || 0}</td>
             <td>${p.career.h || 0}</td>
             <td>${p.career.r || 0}</td>
             <td>${p.career.er || 0}</td>
             <td>${p.career.hr || 0}</td>
             <td>${p.career.hbp || 0}</td>
-            <td>${p.career.svo || 0}</td>
+            <td>${p.career.sv || 0}</td>
+            <td>${(p.career.svo||0)-(p.career.sv||0)}</td>
             <td>${p.career.ip > 0 ? ((p.career.k / p.career.ip) * 9).toFixed(1) : '—'}</td>
             <td>${(() => { const ab = (p.career.bf||0)-(p.career.bb||0)-(p.career.hbp||0); return ab > 0 ? (p.career.h/ab).toFixed(3) : '—'; })()}</td>
           </tr></tbody>
@@ -704,7 +707,7 @@ export function updateRating(label, rawVal) {
 
   if (p.type === 'batter') {
     if (label === 'Contact')  { p.kPct  = cl((1 - v/100) * 0.40, 0.10, 0.40); p.avg = cl(0.195 + (v/100) * 0.130, 0.190, 0.330); }
-    if (label === 'Power')    { p.hrPct = cl((v/100) * 0.112, 0.005, 0.112); p.doublePct = cl(0.022 + (v/100) * 0.050, 0.02, 0.09); }
+    if (label === 'Power')    { p.hrPct = cl((v/100) * 0.065, 0.002, 0.065); p.doublePct = cl(0.022 + (v/100) * 0.050, 0.02, 0.09); }
     if (label === 'Patience') p.bbPct  = cl((v/100) * 0.18, 0.04, 0.18);
     if (label === 'Speed')    p.sbRate = cl((v/100) * 0.15, 0.02, 0.25);
   } else {
@@ -837,6 +840,7 @@ export function renderPlayersTable() {
     else if (sortCol === 'psho') { av = a.career.sho || 0; bv = b.career.sho || 0; }
     else if (sortCol === 'psv')  { av = a.career.sv || 0; bv = b.career.sv || 0; }
     else if (sortCol === 'psvo') { av = a.career.svo || 0; bv = b.career.svo || 0; }
+    else if (sortCol === 'pbs')  { av = (a.career.svo||0)-(a.career.sv||0); bv = (b.career.svo||0)-(b.career.sv||0); }
     else if (sortCol === 'pip')  { av = a.career.ip || 0; bv = b.career.ip || 0; }
     else if (sortCol === 'ph')   { av = a.career.h || 0; bv = b.career.h || 0; }
     else if (sortCol === 'pr')   { av = a.career.r || 0; bv = b.career.r || 0; }
@@ -856,9 +860,9 @@ export function renderPlayersTable() {
   const thead = document.getElementById('players-thead');
   if (isPitView) {
     thead.innerHTML = `
-      <th onclick="doSort('name')" style="text-align:left">Player</th>
-      <th onclick="doSort('team')" style="text-align:left">Team</th>
-      <th style="text-align:left">Pos</th>
+      <th onclick="doSort('name')" style="text-align:left;width:130px">Player</th>
+      <th onclick="doSort('team')" style="text-align:left;width:150px">Team</th>
+      <th style="text-align:left;width:36px">Pos</th>
       <th onclick="doSort('pw')">W</th>
       <th onclick="doSort('pl')">L</th>
       <th onclick="doSort('era')">ERA</th>
@@ -866,8 +870,9 @@ export function renderPlayersTable() {
       <th onclick="doSort('pg')">G</th>
       <th onclick="doSort('pcg')">CG</th>
       <th onclick="doSort('psho')">SHO</th>
-      <th onclick="doSort('psv')">SV</th>
       <th onclick="doSort('psvo')">SVO</th>
+      <th onclick="doSort('psv')">SV</th>
+      <th onclick="doSort('pbs')">BS</th>
       <th onclick="doSort('pip')">IP</th>
       <th onclick="doSort('ph')">H</th>
       <th onclick="doSort('pr')">R</th>
@@ -881,9 +886,9 @@ export function renderPlayersTable() {
     `;
   } else {
     thead.innerHTML = `
-      <th onclick="doSort('name')" style="text-align:left">Player</th>
-      <th onclick="doSort('team')" style="text-align:left">Team</th>
-      <th style="text-align:left">Pos</th>
+      <th onclick="doSort('name')" style="text-align:left;width:130px">Player</th>
+      <th onclick="doSort('team')" style="text-align:left;width:150px">Team</th>
+      <th style="text-align:left;width:36px">Pos</th>
       <th onclick="doSort('pa')">PA</th>
       <th onclick="doSort('avg')">AVG</th>
       <th onclick="doSort('hr')">HR</th>
@@ -926,8 +931,9 @@ export function renderPlayersTable() {
         <td>${p.career.g || 0}</td>
         <td>${p.career.cg || 0}</td>
         <td>${p.career.sho || 0}</td>
-        <td>${p.career.sv || 0}</td>
         <td>${p.career.svo || 0}</td>
+        <td>${p.career.sv || 0}</td>
+        <td>${(p.career.svo||0)-(p.career.sv||0)}</td>
         <td>${formatIP(p.career.ip)}</td>
         <td>${p.career.h || 0}</td>
         <td>${p.career.r || 0}</td>
@@ -960,7 +966,7 @@ export function renderPlayersTable() {
         <td colspan="3"><b>Totals / Weighted Avg</b></td>
         <td>${tot.w}</td><td>${tot.l}</td><td>${tEra}</td>
         <td>${tot.gs}</td><td>${tot.g}</td><td>${tot.cg}</td><td>${tot.sho}</td>
-        <td>${tot.sv}</td><td>${tot.svo}</td><td>${formatIP(tot.ip)}</td>
+        <td>${tot.svo}</td><td>${tot.sv}</td><td>${formatIP(tot.ip)}</td>
         <td>${tot.h}</td><td>${tot.r}</td><td>${tot.er}</td><td>${tot.hr}</td>
         <td>${tot.hbp}</td><td>${tot.bb}</td><td>${tot.k}</td>
         <td>${tWhip}</td><td>${tBaa}</td>
@@ -1090,6 +1096,7 @@ function renderScheduleView(cont) {
     <button class="btn sm primary" onclick="schedNewSeason()">New Schedule</button>
     ${saved.length > 0 ? `<button class="btn sm${schedShowLoad ? ' active-btn' : ''}" onclick="schedLoadOpen()">Load Schedule</button>` : ''}
     ${sched.length > 0 ? `<button class="btn sm" onclick="schedDeleteAll()">Clear Schedule</button>` : ''}
+    ${sched.length > 0 ? `<button class="btn sm" onclick="schedRecycle()">Recycle Schedule</button>` : ''}
     ${sched.length > 0 ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--muted)">${played} / ${sched.length} games played</span>` : ''}
   </div>`;
 
@@ -1316,6 +1323,26 @@ function resetSchedState() {
 export function schedDeleteAll() {
   if (!confirm('Clear the entire schedule?')) return;
   LEAGUE.schedule = [];
+  saveLeague();
+  renderSchedule();
+}
+
+export function schedRecycle() {
+  if (!confirm('Reset all stats and restart the schedule from game 1?')) return;
+  // Reset all schedule games to unplayed
+  (LEAGUE.schedule || []).forEach(g => { g.played = false; delete g.awayScore; delete g.homeScore; });
+  // Reset all player and team stats without archiving
+  LEAGUE.teams.forEach(t => {
+    [...t.batters, ...t.pitchers].forEach(p => {
+      if (p.type === 'batter') {
+        p.career = { g:0, pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 };
+      } else {
+        p.career = { g:0, gs:0, cg:0, sho:0, ip:0, h:0, r:0, er:0, bb:0, k:0, w:0, l:0, sv:0, svo:0, hr:0, hbp:0, bf:0 };
+      }
+    });
+    t.w = 0; t.l = 0; t.runsFor = 0; t.runsAgainst = 0;
+  });
+  LEAGUE.gamesPlayed = 0;
   saveLeague();
   renderSchedule();
 }

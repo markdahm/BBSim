@@ -989,13 +989,26 @@ function endGame() {
       p.career.bf  = (p.career.bf  || 0) + (gs.bf  || 0);
       if (p === winP)  p.career.w++;
       if (p === lossP) p.career.l++;
-      if (p === saveP) { p.career.sv = (p.career.sv || 0) + 1; p.career.svo = (p.career.svo || 0) + 1; }
+      if (p === saveP) p.career.sv = (p.career.sv || 0) + 1;
     });
     // Complete game / shutout for the sole starter
     if (pitched.length === 1) {
       pitched[0].career.cg = (pitched[0].career.cg || 0) + 1;
       if (G.runs[1 - ti] === 0 && teamWon) pitched[0].career.sho = (pitched[0].career.sho || 0) + 1;
     }
+  });
+
+  // Save opportunities — credit svo to any pitcher who entered with a 1–3 run lead
+  // (includes blown saves on the losing team and holds on the winning team)
+  [G.away, G.home].forEach((team, ti) => {
+    team.pitchers.filter(p => p.game && p.game.pitches > 0 && p.game.entryScore).forEach(p => {
+      const es = p.game.entryScore;
+      const myEntry  = ti === 0 ? es.away : es.home;
+      const oppEntry = ti === 0 ? es.home : es.away;
+      if (myEntry - oppEntry >= 1 && myEntry - oppEntry <= 3) {
+        p.career.svo = (p.career.svo || 0) + 1;
+      }
+    });
   });
 
   // Games played for lineup batters

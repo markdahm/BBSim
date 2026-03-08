@@ -112,7 +112,7 @@ export function mkBatter(pos) {
     avg:       cl(0.248 + a.avgD + rand(-.022, .022), .190, .330),
     kPct:      cl(MLB.k    + a.kD  + rand(-.03, .03),  .10, .40),
     bbPct:     cl(MLB.walk + a.bbD + rand(-.02, .02),  .04, .18),
-    hrPct:     cl(MLB.hr   + a.hrD + rand(-.01, .015), .005, .08),
+    hrPct:     cl(MLB.hr * 0.65 + a.hrD + rand(-.010, .012), .002, .065),
     singlePct: cl(MLB.single        + rand(-.02, .02),  .08, .22),
     doublePct: cl(MLB.double        + rand(-.01, .01),  .02, .09),
     triplePct: cl(MLB.triple + (a.trD || 0) + rand(0, .005), .001, .012),
@@ -153,7 +153,7 @@ function mkBatterFromCSV(row) {
 
   // Same inverse formulas as updateRating — CSV value → internal probability
   const kPct      = cl((1 - contact/100)  * 0.40, 0.10, 0.40);
-  const hrPct     = cl((power/100)         * 0.08, 0.005, 0.08);
+  const hrPct     = cl(Math.pow(power/100, 1.8) * 0.065, 0.002, 0.065);
   const bbPct     = cl((patience/100)      * 0.18, 0.04, 0.18);
   const sbRate    = cl((speed/100)         * 0.15, 0.02, 0.25);
   const doublePct = cl(0.022 + (power/100) * 0.050, .02, .09);

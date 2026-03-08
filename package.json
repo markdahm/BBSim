@@ -4,8 +4,8 @@
   "description": "Diamond League - Baseball Simulation Manager",
   "main": "index.html",
   "scripts": {
-    "dev": "browser-sync start --server --files '*.html, *.css, *.js, src/*.js' --no-notify",
-    "start": "browser-sync start --server --files '*.html, *.css, *.js, src/*.js' --no-notify",
+    "dev": "browser-sync start --server --port 3001 --files '*.html, *.css, *.js, src/*.js' --no-notify",
+    "start": "browser-sync start --server --port 3001 --files '*.html, *.css, *.js, src/*.js' --no-notify",
     "serve": "python3 -m http.server 8000"
   },
   "keywords": [
