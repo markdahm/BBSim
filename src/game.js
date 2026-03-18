@@ -572,7 +572,7 @@ function simPitch() {
       addLog(gTag(), `${batter.name} ${foT[ri(foT.length)]}.`, 't-out', isSF ? 'SF' : 'FO');
       if (isSF) {
         batter.career.sf = (batter.career.sf || 0) + 1; batter.game.sf = (batter.game.sf || 0) + 1;
-        const sfRunner = G.bases[2], sfEarned = G.baseEarned[2]; G.bases[2] = null; G.baseEarned[2] = true; scoreRun(bi, sfEarned, sfRunner); addRunLog(bi, 1); batter.game.rbi++; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name);
+        const sfRunner = G.bases[2], sfEarned = G.baseEarned[2]; G.bases[2] = null; G.baseEarned[2] = true; scoreRun(bi, sfEarned, sfRunner); addRunLog(bi, 1); batter.game.rbi++; batter.career.rbi = (batter.career.rbi || 0) + 1; showScoreboardMsg('SAC FLY!', 1800); pushFeed('SF', batter.name);
       } else {
         batter.career.ab++; batter.game.ab++;
         showScoreboardMsg('FLY OUT', 1200); pushFeed('FO', batter.name);
@@ -610,9 +610,9 @@ function simPitch() {
         if (runner1) { nb[1] = runner1; ne[1] = earned1; }            // runner on 1st → 2nd
         nb[0] = batter;                                                 // batter → 1st (hit = earned)
         G.bases = nb; G.baseEarned = ne;
-        addRunLog(bi, G.runs[bi] - rb1); batter.game.rbi += G.runs[bi] - rb1;
+        addRunLog(bi, G.runs[bi] - rb1); batter.game.rbi += G.runs[bi] - rb1; batter.career.rbi = (batter.career.rbi || 0) + (G.runs[bi] - rb1);
       } else {
-        const rb1 = G.runs[bi]; advR(1, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb1); batter.game.rbi += G.runs[bi] - rb1;
+        const rb1 = G.runs[bi]; advR(1, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb1); batter.game.rbi += G.runs[bi] - rb1; batter.career.rbi = (batter.career.rbi || 0) + (G.runs[bi] - rb1);
       }
       nextB(bi); break;
     }
@@ -637,13 +637,13 @@ function simPitch() {
         else          { nb[2] = runner1; ne[2] = earned1; addLog(gTag(), `Runner holds at third.`, 't-info'); }
         nb[1] = batter;                                                 // batter → 2nd (hit = earned)
         G.bases = nb; G.baseEarned = ne;
-        addRunLog(bi, G.runs[bi] - rb2); batter.game.rbi += G.runs[bi] - rb2;
+        addRunLog(bi, G.runs[bi] - rb2); batter.game.rbi += G.runs[bi] - rb2; batter.career.rbi = (batter.career.rbi || 0) + (G.runs[bi] - rb2);
       } else {
-        const rb2 = G.runs[bi]; advR(2, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb2); batter.game.rbi += G.runs[bi] - rb2;
+        const rb2 = G.runs[bi]; advR(2, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb2); batter.game.rbi += G.runs[bi] - rb2; batter.career.rbi = (batter.career.rbi || 0) + (G.runs[bi] - rb2);
       }
       nextB(bi); break;
     }
-    case 'triple': { G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.triples = (batter.career.triples || 0) + 1; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++; addLog(gTag(), `${batter.name} TRIPLES!`, 't-hit', '3B'); showScoreboardMsg('TRIPLE!!!', 2200); pushFeed('3B', batter.name); const rb3 = G.runs[bi]; advR(3, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb3); batter.game.rbi += G.runs[bi] - rb3; nextB(bi); break; }
+    case 'triple': { G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.triples = (batter.career.triples || 0) + 1; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++; addLog(gTag(), `${batter.name} TRIPLES!`, 't-hit', '3B'); showScoreboardMsg('TRIPLE!!!', 2200); pushFeed('3B', batter.name); const rb3 = G.runs[bi]; advR(3, bi, true, true, batter); addRunLog(bi, G.runs[bi] - rb3); batter.game.rbi += G.runs[bi] - rb3; batter.career.rbi = (batter.career.rbi || 0) + (G.runs[bi] - rb3); nextB(bi); break; }
     case 'hr': {
       G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.hr++; batter.game.ab++; batter.game.h++; batter.game.hr++; pitcher.game.hits++; pitcher.career.h++; pitcher.career.hr++; pitcher.game.hr++; pitcher.game.strikes++;
       const runnerData = G.bases.map((r, i) => r ? { player: r, earned: G.baseEarned[i] } : null).filter(Boolean);
