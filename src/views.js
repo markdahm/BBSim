@@ -1361,6 +1361,7 @@ export function schedLoadOpen() {
 
 export function schedSetTeamFilter(val) {
   schedTeamFilter = val;
+  LEAGUE._schedFilter = val;
   renderSchedule();
 }
 
@@ -1783,7 +1784,7 @@ function renderPlayoffBracket(cont, actions) {
   const allDone = series.every(s => s.winner);
   if (actions) {
     if (!allDone) {
-      actions.innerHTML = `<button class="btn sm" onclick="playoffAutoAll()">Play Division Series</button>
+      actions.innerHTML = `<button class="btn sm" onclick="playoffAutoAll()">Play All Games</button>
         <button class="btn sm danger" onclick="resetPlayoffs()">Reset</button>`;
     } else {
       actions.innerHTML = `<button class="btn sm danger" onclick="resetPlayoffs()">Reset</button>`;

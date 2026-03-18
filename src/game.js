@@ -19,6 +19,7 @@ let gLineupView = 0;
 let simMode = 'schedule';    // 'expo' | 'schedule' | 'playoffs'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
+let hideAnimation = false;   // when true, skip all per-pitch DOM updates
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
 let playoffIsAutoMode = false;       // true when game was started by auto-play (not single-play)
 let playoffCurrentSeriesIdx = -1;    // series index being played in single-play playoff mode
@@ -77,7 +78,7 @@ export function renderSimulate() {
     } else {
       // Schedule mode
       const sched = LEAGUE.schedule || [];
-      const nextIdx = sched.findIndex(g => !g.played);
+      const nextIdx = nextSchedIdx(sched);
       const played  = sched.filter(g => g.played).length;
       const total   = sched.length;
       const remaining = total - played;
@@ -91,13 +92,14 @@ export function renderSimulate() {
       if (sched.length === 0) {
         picker = `<div style="padding:20px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">No schedule found. Build one on the Schedule page.</div>`;
       } else if (nextIdx === -1) {
-        picker = `${schedStrip}<div style="padding:12px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">All ${sched.length} games have been played!</div>`;
+        picker = `${schedStrip}${schedProgressStrip()}<div style="padding:12px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">All ${sched.length} games have been played!</div>`;
       } else {
         const g    = sched[nextIdx];
         const away = LEAGUE.teams.find(t => t.id === g.awayId);
         const home = LEAGUE.teams.find(t => t.id === g.homeId);
         picker = `
           ${schedStrip}
+          ${schedProgressStrip()}
           <div class="sched-next-game" style="margin-top:14px">
             <span class="sng-team">${teamLogoHtml(away, 32)} ${away.name}</span>
             <span class="sng-at">@</span>
@@ -107,6 +109,7 @@ export function renderSimulate() {
             <button class="btn primary" onclick="startScheduleGame()">Play Ball!</button>
             <button class="btn" onclick="gAutoMulti()">Auto Multi-Game</button>
             <button class="btn" onclick="gAutoAll()">All of 'em</button>
+            <button class="btn" id="btn-hide-anim" onclick="gToggleHideAnimation(this)">${hideAnimation ? 'Show Animation' : 'Hide Animation'}</button>
           </div>`;
       }
       cont.innerHTML = `
@@ -128,7 +131,7 @@ export function simSetMode(mode) {
 
 export function startScheduleGame() {
   const sched = LEAGUE.schedule || [];
-  const idx = sched.findIndex(g => !g.played);
+  const idx = nextSchedIdx(sched);
   if (idx === -1) return;
   schedGameIdx = idx;
   startGame(sched[idx].awayId, sched[idx].homeId);
@@ -200,7 +203,7 @@ export function gNextGame() {
     return;
   }
   const sched = LEAGUE.schedule || [];
-  const idx = sched.findIndex(g => !g.played);
+  const idx = nextSchedIdx(sched);
   if (idx === -1) {
     // No more games — fall back to schedule picker
     G.running = false;
@@ -213,12 +216,40 @@ export function gNextGame() {
   startGame(sched[idx].awayId, sched[idx].homeId);
 }
 
+function schedProgressStrip() {
+  const sched = LEAGUE.schedule || [];
+  if (sched.length === 0 || simMode !== 'schedule') return '';
+  const played = sched.filter(g => g.played).length;
+  const current = schedGameIdx >= 0 ? 1 : 0;
+  const unplayed = sched.length - played - current;
+  const box = (color) => `<div style="width:4px;height:5px;background:${color};border-radius:1px;flex-shrink:0"></div>`;
+  const boxes = [
+    ...Array(played).fill(box('#3b82f6')),
+    ...Array(current).fill(box('#f59e0b')),
+    ...Array(Math.max(0, unplayed)).fill(box('#22c55e')),
+  ].join('');
+  return `<div id="sched-progress-strip" style="display:flex;flex-wrap:wrap;gap:1px;margin:6px 0 2px">${boxes}</div>`;
+}
+
+function updateSchedProgressStrip() {
+  const el = document.getElementById('sched-progress-strip');
+  if (!el) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = schedProgressStrip();
+  if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+}
+
 function renderGameUI() {
+  if (hideAnimation) {
+    document.getElementById('sim-container').innerHTML = `<div class="matchup-picker">${schedProgressStrip()}</div>`;
+    return;
+  }
   const away = G.away, home = G.home;
   document.getElementById('sim-container').innerHTML = `
   <div class="sim-layout">
   <div class="sim-main">
 
+    ${schedProgressStrip()}
     <div class="scoreboard">
       <div class="score-header" id="g-score-header">
         <div></div>
@@ -264,6 +295,7 @@ function renderGameUI() {
       <button class="btn" id="g-btn-auto" onclick="gAuto()">Auto-Play Half Inning</button>
       <button class="btn" id="g-btn-game" onclick="gAutoGame()">Auto-Play Game</button>
       <button class="btn" onclick="gNextGame()">Next Game →</button>
+      ${autoMultiRemaining > 0 ? `<button class="btn" id="g-btn-stop" onclick="gStopAuto(this)" style="color:#f87171">Stop After This Game</button>` : ''}
       <div style="display:flex;align-items:center;gap:7px;margin-left:auto">
         <span class="settings-label" style="white-space:nowrap">Delay</span>
         <div class="rating-bar-bg" style="width:110px;flex:none;cursor:pointer" onclick="gSetDelay(Math.round(event.offsetX/this.offsetWidth*10)*100)">
@@ -308,7 +340,7 @@ function renderGameUI() {
 }
 
 // ── GAME ENGINE ──
-function gRenderAll() { gRenderSB(); gRenderStatus(); gRenderPlayers(); gRenderLineup(); gRenderPitchers(); gRenderInning(); gRenderFeed(); }
+function gRenderAll() { if (hideAnimation) return; gRenderSB(); gRenderStatus(); gRenderPlayers(); gRenderLineup(); gRenderPitchers(); gRenderInning(); gRenderFeed(); }
 
 function gRenderFeed() {
   const el = document.getElementById('g-sb-feed');
@@ -442,6 +474,7 @@ function flashMsg(text, times, onMs, offMs, holdMs) {
 }
 
 function showScoreboardMsg(text, ms = 1800, color = null) {
+  if (hideAnimation) return;
   const el = document.getElementById('g-sb-msg');
   const tx = document.getElementById('g-sb-msg-text');
   if (!el || !tx) return;
@@ -469,7 +502,7 @@ export function gPitch() {
 }
 
 function simPitch() {
-  const sbMsg = document.getElementById('g-sb-msg'); if (sbMsg) sbMsg.style.display = 'none';
+  if (!hideAnimation) { const sbMsg = document.getElementById('g-sb-msg'); if (sbMsg) sbMsg.style.display = 'none'; }
   if (msgT) { clearTimeout(msgT); msgT = null; }
   if (G._feedInning !== G.inning || G._feedHalf !== G.half) {
     G.eventFeed = [];
@@ -732,6 +765,7 @@ export function resolveDec(id, bi) {
 
 let hpQueue = 0, hpBusy = false;
 function flashHome() {
+  if (hideAnimation) return;
   hpQueue++;
   if (hpBusy) return;
   const step = () => {
@@ -1027,6 +1061,7 @@ function endGame() {
     const sg = LEAGUE.schedule[schedGameIdx];
     if (sg) { sg.played = true; sg.awayScore = G.runs[0]; sg.homeScore = G.runs[1]; }
     schedGameIdx = -1;
+    updateSchedProgressStrip();
   }
 
   // Playoff series advancement
@@ -1055,6 +1090,8 @@ function endGame() {
 
   // Multi-game auto mode — skip overlay, chain to next game
   if (autoMultiRemaining > 0) { autoMultiNext(); return; }
+
+  if (hideAnimation) { renderSimulate(); return; }
 
   const el = document.getElementById('g-over'); if (el) el.style.display = 'block';
   setText('g-over-w', w === 'Tie' ? 'Final — Tie' : `${w} Win!`);
@@ -1182,11 +1219,39 @@ export function gAutoGame() {
 }
 
 
+// Returns the index of the next game to auto-play.
+// When a schedule filter is active, filtered games are prioritised;
+// once all filtered games are played it falls back to any unplayed game.
+function nextSchedIdx(sched) {
+  const tf = (LEAGUE._schedFilter || '').toLowerCase();
+  if (tf) {
+    const fi = sched.findIndex(g => {
+      if (g.played) return false;
+      const away = LEAGUE.teams.find(t => t.id === g.awayId);
+      const home = LEAGUE.teams.find(t => t.id === g.homeId);
+      return (away && away.name.toLowerCase() === tf) || (home && home.name.toLowerCase() === tf);
+    });
+    if (fi !== -1) return fi;
+  }
+  return sched.findIndex(g => !g.played);
+}
+
 export function gAutoMulti() {
   const sched = LEAGUE.schedule || [];
   const unplayed = sched.filter(g => !g.played).length;
   if (unplayed === 0) { alert('No unplayed games remaining.'); return; }
-  const input = prompt(`How many games to auto-play? (${unplayed} remaining)`);
+  const tf = (LEAGUE._schedFilter || '').toLowerCase();
+  let msg = `How many games to auto-play? (${unplayed} remaining)`;
+  if (tf) {
+    const fc = sched.filter(g => {
+      if (g.played) return false;
+      const away = LEAGUE.teams.find(t => t.id === g.awayId);
+      const home = LEAGUE.teams.find(t => t.id === g.homeId);
+      return (away && away.name.toLowerCase() === tf) || (home && home.name.toLowerCase() === tf);
+    }).length;
+    if (fc > 0) msg = `How many games to auto-play? (${fc} filtered first, ${unplayed} total remaining)`;
+  }
+  const input = prompt(msg);
   const n = parseInt(input);
   if (!n || n < 1) return;
   autoMultiRemaining = Math.min(n, unplayed);
@@ -1209,7 +1274,7 @@ function autoMultiNext() {
     return;
   }
   const sched = LEAGUE.schedule || [];
-  const idx = sched.findIndex(g => !g.played);
+  const idx = nextSchedIdx(sched);
   if (idx === -1) { autoMultiRemaining = 0; G.running = false; renderSimulate(); return; }
   autoMultiRemaining--;
   schedGameIdx = idx;
@@ -1222,6 +1287,16 @@ function autoMultiNext() {
     if (!G.over) setTimeout(step, 0);
   }
   step();
+}
+
+export function gToggleHideAnimation(btn) {
+  hideAnimation = !hideAnimation;
+  if (btn) btn.textContent = hideAnimation ? 'Show Animation' : 'Hide Animation';
+}
+
+export function gStopAuto(btn) {
+  autoMultiRemaining = 0;
+  if (btn) { btn.textContent = 'Stopping…'; btn.disabled = true; }
 }
 
 export function gSetDelay(v) {
@@ -1283,6 +1358,7 @@ function gOrd(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : 
 const LOG_ICON_COLOR = { '1B':'#7ecf7e','2B':'#7ecf7e','3B':'#7ecf7e','HR':'#4ab3ff','BB':'#ffcc00','HBP':'#ffcc00','SF':'#ffcc00','R':'#4ab3ff','K':'#cc1111','GO':'#cc1111','FO':'#cc1111','LO':'#cc1111','DP':'#cc1111','E':'#ff8c00' };
 
 function addLog(t, txt, cls, icon = '') {
+  if (hideAnimation) return;
   const l = document.getElementById('g-log'); if (!l) return;
   const e = document.createElement('div'); e.className = 'lr';
   const iHtml = icon ? `<span class="li" style="color:${LOG_ICON_COLOR[icon]||'#aaa'}">${icon}</span>` : '<span class="li"></span>';
@@ -1291,6 +1367,7 @@ function addLog(t, txt, cls, icon = '') {
 }
 
 function addDelimiter(style) {
+  if (hideAnimation) return;
   const l = document.getElementById('g-log'); if (!l) return;
   const e = document.createElement('div'); e.className = `log-delimiter log-delimiter-${style}`;
   l.insertBefore(e, l.firstChild);
