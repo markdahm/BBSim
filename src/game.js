@@ -551,7 +551,7 @@ function showScoreboardMsg(text, ms = 1800, color = null) {
 }
 
 export function gSinglePitch() {
-  if (G.over || pending) return;
+  if (G.over) return;
   simPitch();
 }
 
@@ -1527,8 +1527,9 @@ function playoffAutoNext() {
   startGame(awayId, homeId);
   function step() {
     if (G.over) return;
-    if (pending) { autoResolveDec(); setTimeout(step, 0); return; }
+    const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
     simPitch();
+    if (!G.over && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) tryAutoSteal(G.half);
     if (!G.over) setTimeout(step, 0);
   }
   step();
