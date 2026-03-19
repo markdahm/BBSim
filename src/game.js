@@ -7,8 +7,6 @@ import { LEAGUE, saveLeague } from './league.js';
 // ====================================================================
 export let G = {};
 let dragSrc2 = null;
-let pending = null;
-let pendingBi = 0;
 let autoT = null;
 let msgT = null;
 let pendingDelay = 0;
@@ -122,7 +120,7 @@ export function startGame(awayIdArg, homeIdArg) {
   awayTeamId = awayId; homeTeamId = homeId;
   const away = LEAGUE.teams.find(t => t.id === awayId);
   const home = LEAGUE.teams.find(t => t.id === homeId);
-  pending = null; clearTimeout(autoT); G.decisionsDisabled = false;
+  clearTimeout(autoT);
 
   G = {
     running: true,
@@ -559,13 +557,12 @@ export function gSinglePitch() {
 
 // ── Pitch simulation ──
 export function gPitch() {
-  if (G.over || pending) return;
+  if (G.over) return;
   const halfBefore = G.half, inningBefore = G.inning, batterBefore = G.lineupIdx[G.half];
   simPitch();
-  // Continue automatically until the batter changes (PA ends), a decision is pending, or the game ends
   const batterChanged = G.lineupIdx[halfBefore] !== batterBefore || G.half !== halfBefore || G.inning !== inningBefore || G.over;
-  if (!batterChanged && !pending && !G.over) autoT = setTimeout(gPitch, pitchDelay);
-  if (batterChanged && !G.over && !pending) checkDec(G.half);
+  if (!batterChanged && !G.over) autoT = setTimeout(gPitch, pitchDelay);
+  if (batterChanged && !G.over) tryAutoSteal(G.half);
 }
 
 function simPitch() {
@@ -769,71 +766,30 @@ function doWalk(batter, pitcher, bi, fielding) {
   if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
 
-function checkDec(bi) {
-  if (G.outs >= 3 || G.over || G.decisionsDisabled) return;
-  const opts = buildOpts(bi);
-  if (opts.length <= 2) return;
-  if (hideAnimation) { pending = opts; pendingBi = bi; autoResolveDec(); }
-  else showDec(opts, bi);
-}
-
-function buildOpts(bi) {
-  const [r1, r2, r3] = G.bases, outs = G.outs;
-  const batting = bi === 0 ? G.away : G.home;
-  const batter  = batting.batters[G.lineupIdx[bi]];
-  const opts = [{id:'play',lbl:'Play it straight',det:'Normal at-bat',odds:''}];
-  if (r1 && !r2 && outs < 2)  opts.push({id:'steal2', lbl:'Steal 2nd',        det:'Runner breaks',          odds:'~70%'});
-  if (r1 && r2  && outs < 2)  opts.push({id:'dsteal', lbl:'Double steal',      det:'Both runners go',        odds:'~62%'});
-  if (r2 && !r3 && !r1 && outs < 2) opts.push({id:'steal3', lbl:'Steal 3rd',  det:'Runner on 2nd goes',     odds:'~65%'});
-  if ((r1 || r2) && outs < 2 && batter.hrPct < .04) opts.push({id:'bunt',      lbl:'Sac bunt',               det:'Advance runners',        odds:'~90%'});
-  if (r3 && outs < 2)          opts.push({id:'squeeze',lbl:'Suicide squeeze',   det:'Runner breaks — must bunt',odds:'~70%'});
-  if (r1 && outs < 2)          opts.push({id:'hitrun', lbl:'Hit and run',       det:'Runner breaks on pitch', odds:'Expands gaps'});
-  opts.push({id:'dismiss',lbl:'Auto-manage rest of game',det:'No more decisions this game',odds:'',dismiss:true});
-  return opts;
-}
-
-function showDec(opts, bi) {
-  pending = opts; pendingBi = bi;
-  const [r1, r2, r3] = G.bases;
-  const runners = []; if (r1) runners.push('1st'); if (r2) runners.push('2nd'); if (r3) runners.push('3rd');
-  setText('g-dec-sit', `${G.outs} out${G.outs !== 1 ? 's' : ''}, runners on: ${runners.join(', ') || 'none'}. Your call:`);
-  const grid = document.getElementById('g-dec-btns');
-  grid.innerHTML = '';
-  opts.forEach(o => {
-    const b = document.createElement('button');
-    b.className = 'dec-btn' + (o.dismiss ? ' dismiss' : '');
-    b.innerHTML = `<span><strong>${o.lbl}</strong> — ${o.det}</span><span class="dec-odds">${o.odds}</span>`;
-    b.onclick = () => resolveDec(o.id, bi);
-    grid.appendChild(b);
-  });
-  const p = document.getElementById('g-dec'); if (p) p.style.display = 'block';
-  const btn = document.getElementById('g-btn-pitch'); if (btn) btn.disabled = true;
-}
-
-function hideDec() {
-  pending = null;
-  const p = document.getElementById('g-dec'); if (p) p.style.display = 'none';
-  const btn = document.getElementById('g-btn-pitch'); if (btn) btn.disabled = G.over;
-}
-
-export function resolveDec(id, bi) {
-  hideDec();
-  if (id === 'dismiss') { G.decisionsDisabled = true; addLog(gTag(), '⚙️ Auto-manage enabled — no more play stoppages this game.', 't-info'); gRenderAll(); return; }
+function tryAutoSteal(bi) {
+  if (G.outs >= 2 || G.over) return;
   const batting = bi === 0 ? G.away : G.home;
   const li = G.lineupIdx[bi];
-  const runner1 = batting.batters[(li + 8) % 9];
-  const runner2 = batting.batters[(li + 7) % 9];
-  switch (id) {
-    case 'play':   addLog(gTag(), 'Manager plays it straight.', 't-manage'); break;
-    case 'steal2': { const ok = Math.random() < cl(0.54 + (runner1.sbRate / 0.25) * 0.32, 0.50, 0.86); addLog(gTag(), `🏃 ${ok ? 'SAFE! Runner takes 2nd!' : 'CAUGHT STEALING!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[0], re = G.baseEarned[0]; G.bases[0] = null; G.bases[1] = r; G.baseEarned[1] = re; runner1.career.sb++; } else { G.bases[0] = null; runner1.career.cs++; recOut(bi); } break; }
-    case 'dsteal': { const sp1 = cl(0.54 + (runner1.sbRate / 0.25) * 0.32, 0.50, 0.86), sp2 = cl(0.50 + (runner2.sbRate / 0.25) * 0.30, 0.46, 0.82); const a = Math.random() < sp1, b2 = Math.random() < sp2; if (a && b2) { addLog(gTag(), '🏃🏃 Double steal — BOTH SAFE!', 't-hit'); const r1 = G.bases[0], r2 = G.bases[1], re1 = G.baseEarned[0], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[1] = r1; G.bases[2] = r2; G.baseEarned[1] = re1; G.baseEarned[2] = re2; runner1.career.sb++; runner2.career.sb++; } else if (a) { addLog(gTag(), 'Lead runner safe, trailing caught!', 't-out'); const r2 = G.bases[1], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[2] = r2; G.baseEarned[2] = re2; runner1.career.cs++; runner2.career.sb++; recOut(bi); } else { addLog(gTag(), 'Double steal botched!', 't-out'); G.bases[0] = null; G.bases[1] = null; runner1.career.cs++; runner2.career.cs++; recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
-    case 'steal3': { const ok = Math.random() < cl(0.50 + (runner2.sbRate / 0.25) * 0.30, 0.46, 0.82); addLog(gTag(), `🏃 Steal of 3rd — ${ok ? 'SAFE!' : 'CAUGHT!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[1], re = G.baseEarned[1]; G.bases[1] = null; G.bases[2] = r; G.baseEarned[2] = re; runner2.career.sb++; } else { G.bases[1] = null; runner2.career.cs++; recOut(bi); } break; }
-    case 'bunt':   { const ok = Math.random() < .87; if (ok) { addLog(gTag(), '📦 Sac bunt — runners advance.', 't-manage'); if (G.bases[2]) { const r = G.bases[2], re = G.baseEarned[2]; G.bases[2] = null; scoreRun(bi, re, r); } if (G.bases[1]) { G.bases[2] = G.bases[1]; G.baseEarned[2] = G.baseEarned[1]; G.bases[1] = null; } if (G.bases[0]) { G.bases[1] = G.bases[0]; G.baseEarned[1] = G.baseEarned[0]; G.bases[0] = null; } nextB(bi); recOut(bi); } else { addLog(gTag(), '📦 Bunt popped up — double play!', 't-out'); if (G.bases[0]) { G.bases[0] = null; recOut(bi); } nextB(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
-    case 'squeeze':{ const ok = Math.random() < .70; addLog(gTag(), `🎯 Suicide squeeze — ${ok ? 'SCORES!' : 'POPPED UP — double play!'}`, ok ? 't-score' : 't-out'); if (ok) { const r = G.bases[2], re = G.baseEarned[2]; G.bases[2] = null; scoreRun(bi, re, r); addRunLog(bi, 1); nextB(bi); recOut(bi); } else { G.bases[2] = null; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
-    case 'hitrun': { const ok = Math.random() < .72; if (ok) { addLog(gTag(), '✅ Hit and run — contact! Runner takes extra base.', 't-hit'); G.hits[G.half]++; const bat = (G.half === 0 ? G.away : G.home).batters[G.lineupIdx[G.half]]; bat.career.h++; bat.career.ab++; advR(2, bi, true, true, bat); nextB(bi); } else { addLog(gTag(), '❌ Hit and run — miss! Runner caught.', 't-out'); G.bases[0] = null; recOut(bi); } break; }
+  const [r1, r2] = G.bases;
+  const runner1 = r1 ? batting.batters[(li + 8) % 9] : null;
+  const runner2 = r2 ? batting.batters[(li + 7) % 9] : null;
+  const sp = r => { const s = r.sbRate || 0; const base = Math.min(s * 4, 0.65); return s < 0.112 ? base * 0.25 : base; };
+  if (r1 && r2 && runner1 && runner2 && Math.random() < sp(runner1) && Math.random() < sp(runner2) * 0.5) {
+    const sp1 = cl(0.54 + (runner1.sbRate / 0.25) * 0.32, 0.50, 0.86), sp2 = cl(0.50 + (runner2.sbRate / 0.25) * 0.30, 0.46, 0.82);
+    const a = Math.random() < sp1, b2 = Math.random() < sp2;
+    if (a && b2) { addLog(gTag(), '🏃🏃 Double steal — BOTH SAFE!', 't-hit'); const re1 = G.baseEarned[0], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[1] = r1; G.bases[2] = r2; G.baseEarned[1] = re1; G.baseEarned[2] = re2; runner1.career.sb++; runner2.career.sb++; }
+    else if (a) { addLog(gTag(), 'Lead runner safe, trailing caught!', 't-out'); const re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[2] = r2; G.baseEarned[2] = re2; runner1.career.cs++; runner2.career.sb++; recOut(bi); }
+    else { addLog(gTag(), 'Double steal botched!', 't-out'); G.bases[0] = null; G.bases[1] = null; runner1.career.cs++; runner2.career.cs++; recOut(bi); if (!G.over && G.outs < 3) recOut(bi); }
+  } else if (r1 && !r2 && runner1 && Math.random() < sp(runner1)) {
+    const ok = Math.random() < cl(0.54 + (runner1.sbRate / 0.25) * 0.32, 0.50, 0.86);
+    addLog(gTag(), `🏃 ${ok ? 'SAFE! Runner takes 2nd!' : 'CAUGHT STEALING!'}`, ok ? 't-hit' : 't-out');
+    if (ok) { const re = G.baseEarned[0]; G.bases[0] = null; G.bases[1] = r1; G.baseEarned[1] = re; runner1.career.sb++; } else { G.bases[0] = null; runner1.career.cs++; recOut(bi); }
+  } else if (!r1 && r2 && !G.bases[2] && runner2 && Math.random() < sp(runner2) * 0.5) {
+    const ok = Math.random() < cl(0.50 + (runner2.sbRate / 0.25) * 0.30, 0.46, 0.82);
+    addLog(gTag(), `🏃 Steal of 3rd — ${ok ? 'SAFE!' : 'CAUGHT!'}`, ok ? 't-hit' : 't-out');
+    if (ok) { const re = G.baseEarned[1]; G.bases[1] = null; G.bases[2] = r2; G.baseEarned[2] = re; runner2.career.sb++; } else { G.bases[1] = null; runner2.career.cs++; recOut(bi); }
   }
   gRenderAll();
-  if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
 
 let hpQueue = 0, hpBusy = false;
@@ -1255,31 +1211,16 @@ function endGame() {
   }
 }
 
-function autoResolveDec() {
-  if (!pending) return;
-  const bi = pendingBi;
-  const batting = bi === 0 ? G.away : G.home;
-  const li = G.lineupIdx[bi];
-  const runner1 = G.bases[0] ? batting.batters[(li + 8) % 9] : null;
-  const runner2 = G.bases[1] ? batting.batters[(li + 7) % 9] : null;
-  const stealProb = r => { const s = r.sbRate || 0; const base = Math.min(s * 4, 0.65); return s < 0.112 ? base * 0.25 : base; };
-  if (pending.some(o => o.id === 'steal2') && runner1 && Math.random() < stealProb(runner1)) { resolveDec('steal2', bi); return; }
-  if (pending.some(o => o.id === 'steal3') && runner2 && Math.random() < stealProb(runner2) * 0.5) { resolveDec('steal3', bi); return; }
-  if (pending.some(o => o.id === 'dsteal') && runner1 && runner2 && Math.random() < stealProb(runner1) && Math.random() < stealProb(runner2) * 0.5) { resolveDec('dsteal', bi); return; }
-  resolveDec('play', bi);
-}
-
 export function gAuto() {
   if (G.over) return;
   const si = G.inning, sh = G.half;
   function step() {
     if (G.over) return;
-    if (pending) { autoResolveDec(); setTimeout(step, 50); return; }
     if (G.inning !== si || G.half !== sh) return;
     const batBefore = G.lineupIdx[G.half];
     simPitch();
     const delay = pendingDelay > 0 ? pendingDelay : pitchDelay; pendingDelay = 0;
-    if (!G.over && !pending && G.inning === si && G.half === sh && G.lineupIdx[G.half] !== batBefore) checkDec(G.half);
+    if (!G.over && G.inning === si && G.half === sh && G.lineupIdx[G.half] !== batBefore) tryAutoSteal(G.half);
     if (!G.over && G.inning === si && G.half === sh) autoT = setTimeout(step, delay);
   }
   step();
@@ -1289,11 +1230,10 @@ export function gAutoGame() {
   if (G.over) return;
   function step() {
     if (G.over) return;
-    if (pending) { autoResolveDec(); setTimeout(step, 50); return; }
     const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
     simPitch();
     const delay = pendingDelay > 0 ? pendingDelay : pitchDelay; pendingDelay = 0;
-    if (!G.over && !pending && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) checkDec(G.half);
+    if (!G.over && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) tryAutoSteal(G.half);
     if (!G.over) autoT = setTimeout(step, delay);
   }
   step();
@@ -1363,10 +1303,9 @@ function autoMultiNext() {
   startGame(sched[idx].awayId, sched[idx].homeId);
   function step() {
     if (G.over) return;  // endGame() will call autoMultiNext()
-    if (pending) { autoResolveDec(); setTimeout(step, 0); return; }
     const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
     simPitch();
-    if (!G.over && !pending && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) checkDec(G.half);
+    if (!G.over && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) tryAutoSteal(G.half);
     if (!G.over) setTimeout(step, 0);
   }
   step();
