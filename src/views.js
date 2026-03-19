@@ -114,7 +114,7 @@ export function renderHome() {
   const schedLabel  = schedTotal > 0 ? ` (${schedPlayed} of ${schedTotal} · ${schedRemain} remaining)` : '';
 
   cont.innerHTML = cols.length === 2
-    ? `<div style="max-width:70%"><div style="font-family:'Oswald',sans-serif;font-size:1.45rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;text-align:center;margin-bottom:16px">STANDINGS<span style="font-size:0.65rem;font-weight:400;font-family:'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none;opacity:0.6">${schedLabel}</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div></div>`
+    ? `<div style="width:fit-content"><div style="font-family:'Oswald',sans-serif;font-size:1.45rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;text-align:center;margin-bottom:16px">STANDINGS<span style="font-size:0.65rem;font-weight:400;font-family:'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none;opacity:0.6">${schedLabel}</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div></div>`
     : cols.join('');
 }
 
@@ -1392,6 +1392,7 @@ export function schedRecycle() {
     t.w = 0; t.l = 0; t.runsFor = 0; t.runsAgainst = 0;
   });
   LEAGUE.gamesPlayed = 0;
+  LEAGUE.playoffs = null;
   LEAGUE._schedFilter = '';
   saveLeague();
   renderSchedule();
