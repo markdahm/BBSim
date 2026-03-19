@@ -16,7 +16,7 @@ import {
   schedDragStart, schedDrop, schedSetCount, schedRemoveRow, schedSetIntraCount,
   generatePlayoffs, renderPlayoffs, resetPlayoffs,
 } from './src/views.js';
-import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gStopAuto, gToggleHideAnimation, gShowLineup, resolveDec, newMatchup, gSetDelay, playoffPlayNext, playoffAutoSeries, playoffAutoAll, playoffAutoRound } from './src/game.js';
+import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gStopAuto, gToggleHideAnimation, gShowLineup, newMatchup, gSetDelay, playoffPlayNext, playoffAutoSeries, playoffAutoAll, playoffAutoRound } from './src/game.js';
 
 // ── Expose functions referenced in HTML onclick attributes ──
 Object.assign(window, {
@@ -38,7 +38,7 @@ Object.assign(window, {
   // Roster import / export
   importRosters, exportLeague,
   // Game engine
-  startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gStopAuto, gToggleHideAnimation, gShowLineup, resolveDec, newMatchup, gSetDelay,
+  startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gStopAuto, gToggleHideAnimation, gShowLineup, newMatchup, gSetDelay,
   playoffPlayNext, playoffAutoSeries, playoffAutoAll, playoffAutoRound,
 });
 
