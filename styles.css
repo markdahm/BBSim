@@ -63,6 +63,17 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .btn.danger { border-color:var(--accent); color:var(--accent); }
 .btn.danger:hover { background:var(--accent); color:#fff; }
 
+/* ── HIDE ANIMATION TOGGLE SWITCH ── */
+.hat-wrap { display:inline-flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; user-select:none; }
+.hat-label { font-family:'IBM Plex Mono',monospace; font-size:0.58rem; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
+.hat-state { font-family:'IBM Plex Mono',monospace; font-size:0.58rem; letter-spacing:1px; text-transform:uppercase; color:var(--muted); transition:color 0.15s; }
+.hat-wrap.on .hat-state-on { color:var(--ink); font-weight:700; }
+.hat-wrap:not(.on) .hat-state-off { color:var(--ink); font-weight:700; }
+.hat-track { position:relative; width:22px; height:42px; border:2px solid var(--ink); border-radius:11px; background:var(--panel); transition:background 0.15s; flex-shrink:0; }
+.hat-wrap.on .hat-track { background:var(--ink); }
+.hat-thumb { position:absolute; left:3px; width:12px; height:12px; border-radius:50%; background:var(--ink); transition:top 0.18s ease; top:3px; }
+.hat-wrap.on .hat-thumb { top:23px; background:var(--chalk); }
+
 /* ── DROPDOWN MENU ── */
 .dropdown { position:relative; }
 .dropdown summary { list-style:none; }
@@ -265,6 +276,8 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .players-table tr:hover td { background:#fafafa; cursor:pointer; }
 .players-table tr:last-child td { border-bottom:none; }
 .players-totals-row td { background:var(--chalk); border-top:2px solid var(--line); font-weight:600; color:var(--ink); cursor:default; }
+.players-table .players-totals-row td { text-align:center; font-family:'IBM Plex Mono',monospace; }
+.players-table .players-totals-row td:first-child { text-align:left; font-family:'IBM Plex Sans',sans-serif; }
 .players-totals-row:hover td { background:var(--chalk); }
 
 /* ── SIMULATE VIEW ── */

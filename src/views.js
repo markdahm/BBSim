@@ -793,11 +793,27 @@ export function renderPlayersTable() {
   // Team filter dropdown
   const tfBar = document.getElementById('team-filter-bar');
   if (tfBar) {
-    const teamNames = [...new Set(LEAGUE.teams.map(t => t.name))].sort();
+    const divOrder = ['NL West','NL Central','NL East','AL West','AL Central','AL East'];
+    const divMap = new Map();
+    for (const t of LEAGUE.teams) {
+      const div = t.division || '—';
+      if (!divMap.has(div)) divMap.set(div, []);
+      divMap.get(div).push(t.name);
+    }
+    const divsSorted = [...divMap.keys()].sort((a, b) => {
+      const ai = divOrder.indexOf(a), bi = divOrder.indexOf(b);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1; if (bi !== -1) return 1;
+      return a.localeCompare(b);
+    });
+    const teamOpts = divsSorted.map(div => {
+      const teams = divMap.get(div).slice().sort();
+      return `<optgroup label="${div}">${teams.map(n => `<option value="${n}"${playerTeamFilter === n ? ' selected' : ''}>${n}</option>`).join('')}</optgroup>`;
+    }).join('');
     tfBar.innerHTML = `<label style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted);margin-right:8px">Filter by team:</label>
       <select class="sched-team-filter" onchange="setTeamFilter(this.value)">
         <option value="">All Teams</option>
-        ${teamNames.map(n => `<option value="${n}"${playerTeamFilter === n ? ' selected' : ''}>${n}</option>`).join('')}
+        ${teamOpts}
       </select>
       ${playerTeamFilter ? ` <button class="btn sm" style="margin-left:6px" onclick="setTeamFilter('')">✕ Clear</button>` : ''}`;
   }
@@ -828,6 +844,11 @@ export function renderPlayersTable() {
     if      (sortCol === 'avg')  { av = battingAvg(a); bv = battingAvg(b); }
     else if (sortCol === 'hr')   { av = a.career.hr || 0; bv = b.career.hr || 0; }
     else if (sortCol === 'rbi')  { av = a.career.rbi || 0; bv = b.career.rbi || 0; }
+    else if (sortCol === 'r')    { av = a.career.r  || 0; bv = b.career.r  || 0; }
+    else if (sortCol === 'h')    { av = a.career.h  || 0; bv = b.career.h  || 0; }
+    else if (sortCol === 'bb')   { av = a.career.bb || 0; bv = b.career.bb || 0; }
+    else if (sortCol === 'sb')   { av = a.career.sb || 0; bv = b.career.sb || 0; }
+    else if (sortCol === 'cs')   { av = a.career.cs || 0; bv = b.career.cs || 0; }
     else if (sortCol === 'k')    { av = a.career.k || 0; bv = b.career.k || 0; }
     else if (sortCol === 'era')  { av = (a.career?.ip || 0) > 0 ? (a.career.er / a.career.ip) * 9 : (a.era || 99); bv = (b.career?.ip || 0) > 0 ? (b.career.er / b.career.ip) * 9 : (b.era || 99); }
     else if (sortCol === 'whip') { av = (a.career?.ip || 0) > 0 ? (a.career.bb + a.career.h) / a.career.ip : 99; bv = (b.career?.ip || 0) > 0 ? (b.career.bb + b.career.h) / b.career.ip : 99; }
@@ -891,11 +912,15 @@ export function renderPlayersTable() {
       <th style="text-align:left;width:36px">Pos</th>
       <th onclick="doSort('pa')">PA</th>
       <th onclick="doSort('avg')">AVG</th>
+      <th onclick="doSort('r')">R</th>
+      <th onclick="doSort('h')">H</th>
       <th onclick="doSort('hr')">HR</th>
       <th onclick="doSort('rbi')">RBI</th>
+      <th onclick="doSort('bb')">BB</th>
       <th onclick="doSort('k')">K</th>
-      <th onclick="doSort('era')">ERA</th>
-      <th onclick="doSort('whip')">WHIP</th>
+      <th onclick="doSort('sb')">SB</th>
+      <th onclick="doSort('cs')">CS</th>
+      ${playerFilter !== 'BAT' ? `<th onclick="doSort('era')">ERA</th><th onclick="doSort('whip')">WHIP</th>` : ''}
     `;
   }
   thead.querySelectorAll('th').forEach(th => {
@@ -905,7 +930,7 @@ export function renderPlayersTable() {
   });
 
   const tbody = document.getElementById('players-tbody');
-  const colCount = isPitView ? 22 : 10;
+  const colCount = isPitView ? 22 : playerFilter === 'BAT' ? 13 : 15;
   if (players.length === 0) {
     tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">No players found.</td></tr>`;
     return;
@@ -966,7 +991,7 @@ export function renderPlayersTable() {
         <td colspan="3"><b>Totals / Weighted Avg</b></td>
         <td>${tot.w}</td><td>${tot.l}</td><td>${tEra}</td>
         <td>${tot.gs}</td><td>${tot.g}</td><td>${tot.cg}</td><td>${tot.sho}</td>
-        <td>${tot.svo}</td><td>${tot.sv}</td><td>${formatIP(tot.ip)}</td>
+        <td>${tot.svo}</td><td>${tot.sv}</td><td>${tot.svo - tot.sv}</td><td>${formatIP(tot.ip)}</td>
         <td>${tot.h}</td><td>${tot.r}</td><td>${tot.er}</td><td>${tot.hr}</td>
         <td>${tot.hbp}</td><td>${tot.bb}</td><td>${tot.k}</td>
         <td>${tWhip}</td><td>${tBaa}</td>
@@ -983,11 +1008,15 @@ export function renderPlayersTable() {
         <td><span class="pos-badge">${p.pos}</span></td>
         <td>${p.career.pa || 0}</td>
         <td>${avg}</td>
+        <td>${p.career.r || 0}</td>
+        <td>${p.career.h || 0}</td>
         <td>${p.career.hr || 0}</td>
         <td>${p.career.rbi || 0}</td>
+        <td>${p.career.bb || 0}</td>
         <td>${p.career.k || 0}</td>
-        <td>${era}</td>
-        <td>${whip}</td>
+        <td>${p.career.sb || 0}</td>
+        <td>${p.career.cs || 0}</td>
+        ${playerFilter !== 'BAT' ? `<td>${era}</td><td>${whip}</td>` : ''}
       </tr>`;
     }).join('');
     if (playerFilter === 'BAT') {
@@ -996,14 +1025,16 @@ export function renderPlayersTable() {
         const tot = batters.reduce((s, p) => ({
           pa: s.pa + (p.career.pa || 0), ab: s.ab + (p.career.ab || 0),
           h: s.h + (p.career.h || 0), hr: s.hr + (p.career.hr || 0),
+          r: s.r + (p.career.r || 0), bb: s.bb + (p.career.bb || 0),
           rbi: s.rbi + (p.career.rbi || 0), k: s.k + (p.career.k || 0),
-        }), { pa:0, ab:0, h:0, hr:0, rbi:0, k:0 });
+          sb: s.sb + (p.career.sb || 0),
+          cs: s.cs + (p.career.cs || 0),
+        }), { pa:0, ab:0, h:0, hr:0, r:0, bb:0, rbi:0, k:0, sb:0, cs:0 });
         const tAvg = tot.ab > 0 ? (tot.h / tot.ab).toFixed(3) : '—';
         tfoot.innerHTML = `<tr class="players-totals-row">
           <td colspan="3"><b>Totals / Weighted Avg</b></td>
           <td>${tot.pa}</td><td>${tAvg}</td>
-          <td>${tot.hr}</td><td>${tot.rbi}</td><td>${tot.k}</td>
-          <td>—</td><td>—</td>
+          <td>${tot.r}</td><td>${tot.h}</td><td>${tot.hr}</td><td>${tot.rbi}</td><td>${tot.bb}</td><td>${tot.k}</td><td>${tot.sb}</td><td>${tot.cs}</td>
         </tr>`;
       } else { tfoot.innerHTML = ''; }
     } else { tfoot.innerHTML = ''; }
@@ -1040,6 +1071,7 @@ export function clearSeason() {
   LEAGUE.gamesPlayed = 0;
   LEAGUE.playoffs = null;
   LEAGUE.schedule = [];
+  LEAGUE._schedFilter = '';
   saveLeague();
   renderHome();
 }
@@ -1062,6 +1094,7 @@ export function advanceSeason() {
   });
   LEAGUE.season++;
   LEAGUE.gamesPlayed = 0;
+  LEAGUE._schedFilter = '';
   saveLeague();
   renderHome();
 }
@@ -1127,12 +1160,28 @@ function renderScheduleView(cont) {
   }
 
   // Team filter dropdown
-  const teamNames = [...new Set(LEAGUE.teams.map(t => t.name))].sort();
+  const sfDivOrder = ['NL West','NL Central','NL East','AL West','AL Central','AL East'];
+  const sfDivMap = new Map();
+  for (const t of LEAGUE.teams) {
+    const div = t.division || '—';
+    if (!sfDivMap.has(div)) sfDivMap.set(div, []);
+    sfDivMap.get(div).push(t.name);
+  }
+  const sfDivsSorted = [...sfDivMap.keys()].sort((a, b) => {
+    const ai = sfDivOrder.indexOf(a), bi = sfDivOrder.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1; if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+  const sfTeamOpts = sfDivsSorted.map(div => {
+    const teams = sfDivMap.get(div).slice().sort();
+    return `<optgroup label="${div}">${teams.map(n => `<option value="${n}"${schedTeamFilter === n ? ' selected' : ''}>${n}</option>`).join('')}</optgroup>`;
+  }).join('');
   html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
     <label style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted)">Filter by team:</label>
     <select class="sched-team-filter" onchange="schedSetTeamFilter(this.value)">
       <option value="">All Teams</option>
-      ${teamNames.map(n => `<option value="${n}"${schedTeamFilter === n ? ' selected' : ''}>${n}</option>`).join('')}
+      ${sfTeamOpts}
     </select>
     ${schedTeamFilter ? `<button class="btn sm" onclick="schedSetTeamFilter('')">✕ Clear</button>` : ''}
   </div>`;
@@ -1343,6 +1392,7 @@ export function schedRecycle() {
     t.w = 0; t.l = 0; t.runsFor = 0; t.runsAgainst = 0;
   });
   LEAGUE.gamesPlayed = 0;
+  LEAGUE._schedFilter = '';
   saveLeague();
   renderSchedule();
 }

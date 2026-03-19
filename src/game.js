@@ -20,6 +20,7 @@ let simMode = 'schedule';    // 'expo' | 'schedule' | 'playoffs'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
 let hideAnimation = false;   // when true, skip all per-pitch DOM updates
+let _prevStandingsSnap = null; // division → teamId[] sorted by rank, taken before each game's W/L update
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
 let playoffIsAutoMode = false;       // true when game was started by auto-play (not single-play)
 let playoffCurrentSeriesIdx = -1;    // series index being played in single-play playoff mode
@@ -30,34 +31,11 @@ let playoffCurrentSeriesIdx = -1;    // series index being played in single-play
 export function renderSimulate() {
   const cont = document.getElementById('sim-container');
   if (!G.running) {
-    const modeBar = `
-      <div class="sim-mode-bar">
-        <button class="sim-mode-btn${simMode === 'expo' ? ' active' : ''}" onclick="simSetMode('expo')">Expo</button>
-        <button class="sim-mode-btn${simMode === 'schedule' ? ' active' : ''}" onclick="simSetMode('schedule')">Schedule</button>
-      </div>`;
-
-    const statsPanel = `
-      <div style="margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:16px">
-        <div class="side-title" style="margin-bottom:10px">MLB 2024 Avg PA Outcomes</div>
-        <table class="ptbl">
-          <tr><td>Strikeout</td><td>22.6%<div class="pbar" style="width:45px"></div></td></tr>
-          <tr><td>Ground Out</td><td>20.3%<div class="pbar" style="width:40px"></div></td></tr>
-          <tr><td>Fly Out</td><td>16.5%<div class="pbar" style="width:33px"></div></td></tr>
-          <tr><td>Walk</td><td>8.1%<div class="pbar" style="width:16px"></div></td></tr>
-          <tr><td>Single</td><td>14.9%<div class="pbar" style="width:30px"></div></td></tr>
-          <tr><td>Double</td><td>5.1%<div class="pbar" style="width:10px"></div></td></tr>
-          <tr><td>Home Run</td><td>3.0%<div class="pbar" style="width:6px"></div></td></tr>
-        </table>
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:0.56rem;color:var(--muted);margin-top:8px">Source: FanGraphs/Baseball Reference 2024</div>
-      </div>`;
-
     if (simMode === 'expo') {
       const opts = LEAGUE.teams.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
       const logoFor = id => { const t = LEAGUE.teams.find(t => t.id === parseInt(id)); return t ? teamLogoHtml(t, 32) : ''; };
       cont.innerHTML = `
         <div class="matchup-picker">
-          <div class="section-title">New Game</div>
-          ${modeBar}
           <div class="mp-row">
             <div class="mp-label">Away</div>
             <span id="logo-away">${teamLogoHtml(LEAGUE.teams[0], 32)}</span>
@@ -71,7 +49,7 @@ export function renderSimulate() {
           <div style="margin-top:8px">
             <button class="btn primary" onclick="startGame()">Play Ball!</button>
           </div>
-        </div>${statsPanel}`;
+        </div>`;
       window._mpLogoFor = logoFor;
       if (LEAGUE.teams.length >= 2) { document.getElementById('sel-home').selectedIndex = 1; document.getElementById('logo-home').innerHTML = logoFor(LEAGUE.teams[1].id); }
 
@@ -109,15 +87,15 @@ export function renderSimulate() {
             <button class="btn primary" onclick="startScheduleGame()">Play Ball!</button>
             <button class="btn" onclick="gAutoMulti()">Auto Multi-Game</button>
             <button class="btn" onclick="gAutoAll()">All of 'em</button>
-            <button class="btn" id="btn-hide-anim" onclick="gToggleHideAnimation(this)">${hideAnimation ? 'Show Animation' : 'Hide Animation'}</button>
+            <div class="hat-wrap${hideAnimation ? ' on' : ''}" id="btn-hide-anim" onclick="gToggleHideAnimation()">
+              <span class="hat-label">Hide Animation</span>
+              <span class="hat-state hat-state-off">Off</span>
+              <div class="hat-track"><div class="hat-thumb"></div></div>
+              <span class="hat-state hat-state-on">On</span>
+            </div>
           </div>`;
       }
-      cont.innerHTML = `
-        <div class="matchup-picker">
-          <div class="section-title">New Game</div>
-          ${modeBar}
-          ${picker}
-        </div>${statsPanel}`;
+      cont.innerHTML = `<div class="matchup-picker">${picker}</div>`;
     }
   } else {
     renderGameUI();
@@ -222,7 +200,7 @@ function schedProgressStrip() {
   const played = sched.filter(g => g.played).length;
   const current = schedGameIdx >= 0 ? 1 : 0;
   const unplayed = sched.length - played - current;
-  const box = (color) => `<div style="width:4px;height:5px;background:${color};border-radius:1px;flex-shrink:0"></div>`;
+  const box = (color) => `<div style="width:2px;height:2.5px;background:${color};border-radius:1px;flex-shrink:0"></div>`;
   const boxes = [
     ...Array(played).fill(box('#3b82f6')),
     ...Array(current).fill(box('#f59e0b')),
@@ -239,9 +217,97 @@ function updateSchedProgressStrip() {
   if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
 }
 
+// ── LIVE STANDINGS (hide-animation mode) ──
+
+function takeStandingsSnapshot() {
+  const snap = {};
+  for (const t of LEAGUE.teams) {
+    const div = t.division || '—';
+    if (!snap[div]) snap[div] = [];
+    snap[div].push(t);
+  }
+  for (const div in snap) {
+    snap[div] = snap[div]
+      .sort((a, b) => {
+        const pA = (a.w + a.l) === 0 ? 0 : a.w / (a.w + a.l);
+        const pB = (b.w + b.l) === 0 ? 0 : b.w / (b.w + b.l);
+        if (pB !== pA) return pB - pA;
+        return b.w - a.w;
+      })
+      .map(t => t.id);
+  }
+  _prevStandingsSnap = snap;
+}
+
+function renderLiveStandings() {
+  const snap = _prevStandingsSnap || {};
+  const divMap = {};
+  for (const t of LEAGUE.teams) {
+    const div = t.division || '—';
+    if (!divMap[div]) divMap[div] = [];
+    divMap[div].push(t);
+  }
+  for (const div in divMap) {
+    divMap[div].sort((a, b) => {
+      const pA = (a.w + a.l) === 0 ? 0 : a.w / (a.w + a.l);
+      const pB = (b.w + b.l) === 0 ? 0 : b.w / (b.w + b.l);
+      if (pB !== pA) return pB - pA;
+      return b.w - a.w;
+    });
+  }
+  const DIV_ORDER = {
+    'American League': ['AL East', 'AL Central', 'AL West'],
+    'National League': ['NL East', 'NL Central', 'NL West'],
+  };
+  const mkDivBlock = divName => {
+    const teams = divMap[divName] || [];
+    const prevIds = snap[divName] || [];
+    const top = teams.slice(0, 3);
+    const rows = top.map((t, i) => {
+      let arrow = '';
+      if (_prevStandingsSnap) {
+        const prevRank = prevIds.indexOf(t.id);
+        if (prevRank === -1) arrow = `<span style="color:#22c55e">↑</span>`;
+        else if (prevRank > i) arrow = `<span style="color:#22c55e">↑</span>`;
+        else if (prevRank < i) arrow = `<span style="color:#f87171">↓</span>`;
+      }
+      const pct = (t.w + t.l) === 0 ? '.000' : (t.w / (t.w + t.l)).toFixed(3).replace(/^0\./, '.');
+      const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${t.color||'#888'};margin-right:4px;vertical-align:middle;flex-shrink:0"></span>`;
+      return `<tr style="line-height:1.7">
+        <td style="color:var(--muted);padding-right:4px;font-size:0.65rem;width:14px">${i+1}</td>
+        <td style="max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dot}${t.name}</td>
+        <td style="text-align:right;padding:0 4px;width:24px">${t.w}</td>
+        <td style="text-align:right;padding:0 4px;width:24px">${t.l}</td>
+        <td style="text-align:right;padding:0 4px;width:42px;color:var(--muted)">${pct}</td>
+        <td style="width:16px;text-align:center;font-size:0.75rem">${arrow}</td>
+      </tr>`;
+    }).join('');
+    return `<div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">${divName}</div>
+      <table style="width:100%;border-collapse:collapse;font-family:'IBM Plex Mono',monospace;font-size:0.7rem">${rows}</table>
+    </div>`;
+  };
+  const mkLeagueCol = leagueName => {
+    const divs = DIV_ORDER[leagueName] || [];
+    return `<div>
+      <div style="font-family:'Oswald',sans-serif;font-size:0.8rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;text-align:center;border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:10px">${leagueName}</div>
+      <div style="display:flex;flex-direction:column;gap:12px">${divs.map(mkDivBlock).join('')}</div>
+    </div>`;
+  };
+  const gameLabel = G.running
+    ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted);margin-bottom:10px">▶ Now simulating: ${G.away.name} @ ${G.home.name}</div>`
+    : '';
+  return `<div style="margin-top:10px">
+    ${gameLabel}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      ${mkLeagueCol('American League')}${mkLeagueCol('National League')}
+    </div>
+  </div>`;
+}
+
 function renderGameUI() {
   if (hideAnimation) {
-    document.getElementById('sim-container').innerHTML = `<div class="matchup-picker">${schedProgressStrip()}</div>`;
+    document.getElementById('sim-container').innerHTML = `<div class="matchup-picker">${schedProgressStrip()}${renderLiveStandings()}</div>`;
     return;
   }
   const away = G.away, home = G.home;
@@ -499,6 +565,7 @@ export function gPitch() {
   // Continue automatically until the batter changes (PA ends), a decision is pending, or the game ends
   const batterChanged = G.lineupIdx[halfBefore] !== batterBefore || G.half !== halfBefore || G.inning !== inningBefore || G.over;
   if (!batterChanged && !pending && !G.over) autoT = setTimeout(gPitch, pitchDelay);
+  if (batterChanged && !G.over && !pending) checkDec(G.half);
 }
 
 function simPitch() {
@@ -702,7 +769,13 @@ function doWalk(batter, pitcher, bi, fielding) {
   if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
 
-function checkDec(bi) { if (G.outs >= 3 || G.over || G.decisionsDisabled) return; const opts = buildOpts(bi); if (opts.length > 1) showDec(opts, bi); }
+function checkDec(bi) {
+  if (G.outs >= 3 || G.over || G.decisionsDisabled) return;
+  const opts = buildOpts(bi);
+  if (opts.length <= 2) return;
+  if (hideAnimation) { pending = opts; pendingBi = bi; autoResolveDec(); }
+  else showDec(opts, bi);
+}
 
 function buildOpts(bi) {
   const [r1, r2, r3] = G.bases, outs = G.outs;
@@ -752,9 +825,9 @@ export function resolveDec(id, bi) {
   const runner2 = batting.batters[(li + 7) % 9];
   switch (id) {
     case 'play':   addLog(gTag(), 'Manager plays it straight.', 't-manage'); break;
-    case 'steal2': { const ok = Math.random() < .68; addLog(gTag(), `🏃 ${ok ? 'SAFE! Runner takes 2nd!' : 'CAUGHT STEALING!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[0], re = G.baseEarned[0]; G.bases[0] = null; G.bases[1] = r; G.baseEarned[1] = re; runner1.career.sb++; } else { G.bases[0] = null; runner1.career.cs++; recOut(bi); } break; }
-    case 'dsteal': { const a = Math.random() < .64, b2 = Math.random() < .64; if (a && b2) { addLog(gTag(), '🏃🏃 Double steal — BOTH SAFE!', 't-hit'); const r1 = G.bases[0], r2 = G.bases[1], re1 = G.baseEarned[0], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[1] = r1; G.bases[2] = r2; G.baseEarned[1] = re1; G.baseEarned[2] = re2; runner1.career.sb++; runner2.career.sb++; } else if (a) { addLog(gTag(), 'Lead runner safe, trailing caught!', 't-out'); const r2 = G.bases[1], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[2] = r2; G.baseEarned[2] = re2; runner1.career.cs++; runner2.career.sb++; recOut(bi); } else { addLog(gTag(), 'Double steal botched!', 't-out'); G.bases[0] = null; G.bases[1] = null; runner1.career.cs++; runner2.career.cs++; recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
-    case 'steal3': { const ok = Math.random() < .64; addLog(gTag(), `🏃 Steal of 3rd — ${ok ? 'SAFE!' : 'CAUGHT!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[1], re = G.baseEarned[1]; G.bases[1] = null; G.bases[2] = r; G.baseEarned[2] = re; runner2.career.sb++; } else { G.bases[1] = null; runner2.career.cs++; recOut(bi); } break; }
+    case 'steal2': { const ok = Math.random() < cl(0.54 + (runner1.sbRate / 0.25) * 0.32, 0.50, 0.86); addLog(gTag(), `🏃 ${ok ? 'SAFE! Runner takes 2nd!' : 'CAUGHT STEALING!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[0], re = G.baseEarned[0]; G.bases[0] = null; G.bases[1] = r; G.baseEarned[1] = re; runner1.career.sb++; } else { G.bases[0] = null; runner1.career.cs++; recOut(bi); } break; }
+    case 'dsteal': { const sp1 = cl(0.54 + (runner1.sbRate / 0.25) * 0.32, 0.50, 0.86), sp2 = cl(0.50 + (runner2.sbRate / 0.25) * 0.30, 0.46, 0.82); const a = Math.random() < sp1, b2 = Math.random() < sp2; if (a && b2) { addLog(gTag(), '🏃🏃 Double steal — BOTH SAFE!', 't-hit'); const r1 = G.bases[0], r2 = G.bases[1], re1 = G.baseEarned[0], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[1] = r1; G.bases[2] = r2; G.baseEarned[1] = re1; G.baseEarned[2] = re2; runner1.career.sb++; runner2.career.sb++; } else if (a) { addLog(gTag(), 'Lead runner safe, trailing caught!', 't-out'); const r2 = G.bases[1], re2 = G.baseEarned[1]; G.bases[0] = null; G.bases[2] = r2; G.baseEarned[2] = re2; runner1.career.cs++; runner2.career.sb++; recOut(bi); } else { addLog(gTag(), 'Double steal botched!', 't-out'); G.bases[0] = null; G.bases[1] = null; runner1.career.cs++; runner2.career.cs++; recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
+    case 'steal3': { const ok = Math.random() < cl(0.50 + (runner2.sbRate / 0.25) * 0.30, 0.46, 0.82); addLog(gTag(), `🏃 Steal of 3rd — ${ok ? 'SAFE!' : 'CAUGHT!'}`, ok ? 't-hit' : 't-out'); if (ok) { const r = G.bases[1], re = G.baseEarned[1]; G.bases[1] = null; G.bases[2] = r; G.baseEarned[2] = re; runner2.career.sb++; } else { G.bases[1] = null; runner2.career.cs++; recOut(bi); } break; }
     case 'bunt':   { const ok = Math.random() < .87; if (ok) { addLog(gTag(), '📦 Sac bunt — runners advance.', 't-manage'); if (G.bases[2]) { const r = G.bases[2], re = G.baseEarned[2]; G.bases[2] = null; scoreRun(bi, re, r); } if (G.bases[1]) { G.bases[2] = G.bases[1]; G.baseEarned[2] = G.baseEarned[1]; G.bases[1] = null; } if (G.bases[0]) { G.bases[1] = G.bases[0]; G.baseEarned[1] = G.baseEarned[0]; G.bases[0] = null; } nextB(bi); recOut(bi); } else { addLog(gTag(), '📦 Bunt popped up — double play!', 't-out'); if (G.bases[0]) { G.bases[0] = null; recOut(bi); } nextB(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
     case 'squeeze':{ const ok = Math.random() < .70; addLog(gTag(), `🎯 Suicide squeeze — ${ok ? 'SCORES!' : 'POPPED UP — double play!'}`, ok ? 't-score' : 't-out'); if (ok) { const r = G.bases[2], re = G.baseEarned[2]; G.bases[2] = null; scoreRun(bi, re, r); addRunLog(bi, 1); nextB(bi); recOut(bi); } else { G.bases[2] = null; nextB(bi); recOut(bi); if (!G.over && G.outs < 3) recOut(bi); } break; }
     case 'hitrun': { const ok = Math.random() < .72; if (ok) { addLog(gTag(), '✅ Hit and run — contact! Runner takes extra base.', 't-hit'); G.hits[G.half]++; const bat = (G.half === 0 ? G.away : G.home).batters[G.lineupIdx[G.half]]; bat.career.h++; bat.career.ab++; advR(2, bi, true, true, bat); nextB(bi); } else { addLog(gTag(), '❌ Hit and run — miss! Runner caught.', 't-out'); G.bases[0] = null; recOut(bi); } break; }
@@ -945,6 +1018,9 @@ function endGame() {
   const hp = document.getElementById('g-bh'); if (hp) hp.classList.remove('on');
   const awayWon = G.runs[0] > G.runs[1], homeWon = G.runs[1] > G.runs[0];
   const w = awayWon ? G.away.name : homeWon ? G.home.name : 'Tie';
+
+  // Snapshot standings before updating W/L so live standings panel can show rank changes
+  if (hideAnimation) takeStandingsSnapshot();
 
   // Update W/L records
   if (awayWon)      { G.away.w++; G.home.l++; }
@@ -1186,9 +1262,10 @@ function autoResolveDec() {
   const li = G.lineupIdx[bi];
   const runner1 = G.bases[0] ? batting.batters[(li + 8) % 9] : null;
   const runner2 = G.bases[1] ? batting.batters[(li + 7) % 9] : null;
-  if (pending.some(o => o.id === 'steal2') && runner1 && Math.random() < runner1.sbRate) { resolveDec('steal2', bi); return; }
-  if (pending.some(o => o.id === 'steal3') && runner2 && Math.random() < runner2.sbRate * 0.5) { resolveDec('steal3', bi); return; }
-  if (pending.some(o => o.id === 'dsteal') && runner1 && runner2 && Math.random() < runner1.sbRate && Math.random() < runner2.sbRate * 0.5) { resolveDec('dsteal', bi); return; }
+  const stealProb = r => { const s = r.sbRate || 0; const base = Math.min(s * 4, 0.65); return s < 0.112 ? base * 0.25 : base; };
+  if (pending.some(o => o.id === 'steal2') && runner1 && Math.random() < stealProb(runner1)) { resolveDec('steal2', bi); return; }
+  if (pending.some(o => o.id === 'steal3') && runner2 && Math.random() < stealProb(runner2) * 0.5) { resolveDec('steal3', bi); return; }
+  if (pending.some(o => o.id === 'dsteal') && runner1 && runner2 && Math.random() < stealProb(runner1) && Math.random() < stealProb(runner2) * 0.5) { resolveDec('dsteal', bi); return; }
   resolveDec('play', bi);
 }
 
@@ -1199,8 +1276,10 @@ export function gAuto() {
     if (G.over) return;
     if (pending) { autoResolveDec(); setTimeout(step, 50); return; }
     if (G.inning !== si || G.half !== sh) return;
+    const batBefore = G.lineupIdx[G.half];
     simPitch();
     const delay = pendingDelay > 0 ? pendingDelay : pitchDelay; pendingDelay = 0;
+    if (!G.over && !pending && G.inning === si && G.half === sh && G.lineupIdx[G.half] !== batBefore) checkDec(G.half);
     if (!G.over && G.inning === si && G.half === sh) autoT = setTimeout(step, delay);
   }
   step();
@@ -1211,8 +1290,10 @@ export function gAutoGame() {
   function step() {
     if (G.over) return;
     if (pending) { autoResolveDec(); setTimeout(step, 50); return; }
+    const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
     simPitch();
     const delay = pendingDelay > 0 ? pendingDelay : pitchDelay; pendingDelay = 0;
+    if (!G.over && !pending && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) checkDec(G.half);
     if (!G.over) autoT = setTimeout(step, delay);
   }
   step();
@@ -1283,15 +1364,18 @@ function autoMultiNext() {
   function step() {
     if (G.over) return;  // endGame() will call autoMultiNext()
     if (pending) { autoResolveDec(); setTimeout(step, 0); return; }
+    const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
     simPitch();
+    if (!G.over && !pending && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) checkDec(G.half);
     if (!G.over) setTimeout(step, 0);
   }
   step();
 }
 
-export function gToggleHideAnimation(btn) {
+export function gToggleHideAnimation() {
   hideAnimation = !hideAnimation;
-  if (btn) btn.textContent = hideAnimation ? 'Show Animation' : 'Hide Animation';
+  const el = document.getElementById('btn-hide-anim');
+  if (el) el.classList.toggle('on', hideAnimation);
 }
 
 export function gStopAuto(btn) {
@@ -1524,6 +1608,7 @@ export function playoffPlayNext(seriesIdx) {
   saveLeague();
   const gameNum = series.games.length + 1;
   const { homeId, awayId } = getGameHomeAway(series, gameNum);
+  hideAnimation = false;
   simMode = 'playoffs';
   window.nav('simulate');
   startGame(awayId, homeId);
