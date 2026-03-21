@@ -257,7 +257,19 @@ function renderLiveStandings() {
     'American League': ['AL East', 'AL Central', 'AL West'],
     'National League': ['NL East', 'NL Central', 'NL West'],
   };
-  const mkDivBlock = divName => {
+  // Find the best team (by win%) in each league
+  const leagueBest = {};
+  for (const [leagueName, divs] of Object.entries(DIV_ORDER)) {
+    const leagueTeams = divs.flatMap(d => divMap[d] || []);
+    leagueTeams.sort((a, b) => {
+      const pA = (a.w + a.l) === 0 ? 0 : a.w / (a.w + a.l);
+      const pB = (b.w + b.l) === 0 ? 0 : b.w / (b.w + b.l);
+      if (pB !== pA) return pB - pA;
+      return b.w - a.w;
+    });
+    if (leagueTeams[0]) leagueBest[leagueName] = leagueTeams[0].id;
+  }
+  const mkDivBlock = (divName, leagueName) => {
     const teams = divMap[divName] || [];
     const prevIds = snap[divName] || [];
     const top = teams.slice(0, 3);
@@ -271,7 +283,9 @@ function renderLiveStandings() {
       }
       const pct = (t.w + t.l) === 0 ? '.000' : (t.w / (t.w + t.l)).toFixed(3).replace(/^0\./, '.');
       const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${t.color||'#888'};margin-right:4px;vertical-align:middle;flex-shrink:0"></span>`;
-      return `<tr style="line-height:1.7">
+      const highlight = leagueBest[leagueName] === t.id;
+      const rowBg = highlight ? 'background:rgba(250,204,21,0.13);' : '';
+      return `<tr style="line-height:1.7;${rowBg}">
         <td style="color:var(--muted);padding-right:4px;font-size:0.65rem;width:14px">${i+1}</td>
         <td style="max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dot}${t.name}</td>
         <td style="text-align:right;padding:0 4px;width:24px">${t.w}</td>
@@ -289,7 +303,7 @@ function renderLiveStandings() {
     const divs = DIV_ORDER[leagueName] || [];
     return `<div>
       <div style="font-family:'Oswald',sans-serif;font-size:0.8rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;text-align:center;border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:10px">${leagueName}</div>
-      <div style="display:flex;flex-direction:column;gap:12px">${divs.map(mkDivBlock).join('')}</div>
+      <div style="display:flex;flex-direction:column;gap:12px">${divs.map(d => mkDivBlock(d, leagueName)).join('')}</div>
     </div>`;
   };
   const gameLabel = G.running
