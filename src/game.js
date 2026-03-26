@@ -272,8 +272,7 @@ function renderLiveStandings() {
   const mkDivBlock = (divName, leagueName) => {
     const teams = divMap[divName] || [];
     const prevIds = snap[divName] || [];
-    const top = teams.slice(0, 3);
-    const rows = top.map((t, i) => {
+    const rows = teams.map((t, i) => {
       let arrow = '';
       if (_prevStandingsSnap) {
         const prevRank = prevIds.indexOf(t.id);

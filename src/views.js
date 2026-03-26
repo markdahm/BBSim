@@ -10,6 +10,7 @@ let currentTeamId = null;
 let currentPlayer = null;
 let playerFilter = 'ALL';
 let playerTeamFilter = '';
+let statFilters = []; // [{ col, op, val, label }]
 let sortCol = 'avg';
 let sortDir = -1;
 let schedBuildMode = false;
@@ -773,6 +774,7 @@ export function deleteCurrentPlayer() {
 // ====================================================================
 export function setFilter(f, el) {
   playerFilter = f;
+  statFilters = [];
   if (f === 'PIT' && ['avg', 'hr', 'rbi', 'pa'].includes(sortCol)) { sortCol = 'era'; sortDir = 1; }
   if (f === 'BAT' && !['avg', 'hr', 'rbi', 'k', 'pa', 'era', 'whip', 'name', 'team'].includes(sortCol)) { sortCol = 'avg'; sortDir = -1; }
   document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
@@ -783,6 +785,65 @@ export function setFilter(f, el) {
 export function setTeamFilter(val) {
   playerTeamFilter = val;
   renderPlayersTable();
+}
+
+export function setStatFilter() {
+  const colEl = document.getElementById('stat-filter-col');
+  const opEl  = document.getElementById('stat-filter-op');
+  const valEl = document.getElementById('stat-filter-val');
+  const col = colEl?.value || '';
+  const op  = opEl?.value  || '>=';
+  const val = valEl?.value || '';
+  if (!col || val === '' || isNaN(parseFloat(val))) return;
+  const label = colEl?.options[colEl.selectedIndex]?.text || col;
+  statFilters.push({ col, op, val, label });
+  if (valEl) valEl.value = '';
+  renderPlayersTable();
+}
+
+export function removeStatFilter(index) {
+  statFilters.splice(index, 1);
+  renderPlayersTable();
+}
+
+export function clearStatFilter() {
+  statFilters = [];
+  renderPlayersTable();
+}
+
+function getStatValue(p, col) {
+  switch (col) {
+    case 'avg':  return battingAvg(p);
+    case 'pa':   return p.career.pa  || 0;
+    case 'r':    return p.career.r   || 0;
+    case 'h':    return p.career.h   || 0;
+    case 'hr':   return p.career.hr  || 0;
+    case 'rbi':  return p.career.rbi || 0;
+    case 'bb':   return p.career.bb  || 0;
+    case 'k':    return p.career.k   || 0;
+    case 'sb':   return p.career.sb  || 0;
+    case 'cs':   return p.career.cs  || 0;
+    case 'era':  return (p.career?.ip || 0) > 0 ? (p.career.er / p.career.ip) * 9 : (p.era || 99);
+    case 'whip': return (p.career?.ip || 0) > 0 ? (p.career.bb + p.career.h) / p.career.ip : 99;
+    case 'pw':   return p.career.w   || 0;
+    case 'pl':   return p.career.l   || 0;
+    case 'pgs':  return p.career.gs  || 0;
+    case 'pg':   return p.career.g   || 0;
+    case 'pcg':  return p.career.cg  || 0;
+    case 'psho': return p.career.sho || 0;
+    case 'psv':  return p.career.sv  || 0;
+    case 'psvo': return p.career.svo || 0;
+    case 'pbs':  return (p.career.svo || 0) - (p.career.sv || 0);
+    case 'pip':  return p.career.ip  || 0;
+    case 'ph':   return p.career.h   || 0;
+    case 'pr':   return p.career.r   || 0;
+    case 'per':  return p.career.er  || 0;
+    case 'phr':  return p.career.hr  || 0;
+    case 'phbp': return p.career.hbp || 0;
+    case 'pbb':  return p.career.bb  || 0;
+    case 'pbaa': { const ab = (p.career.bf||0)-(p.career.bb||0)-(p.career.hbp||0); return ab > 0 ? (p.career.h||0)/ab : 0; }
+    default:     return 0;
+  }
 }
 
 export function renderPlayersTable() {
@@ -817,6 +878,74 @@ export function renderPlayersTable() {
       </select>
       ${playerTeamFilter ? ` <button class="btn sm" style="margin-left:6px" onclick="setTeamFilter('')">✕ Clear</button>` : ''}`;
   }
+
+  // Stat filter bar — only re-render the input controls when the player type tab
+  // changes; update the active-filter chips on every render.
+  const sfBar = document.getElementById('stat-filter-bar');
+  if (sfBar) {
+    if (sfBar.dataset.filter !== playerFilter) {
+      sfBar.dataset.filter = playerFilter;
+      const batStats = [
+        { col: 'pa', label: 'PA' }, { col: 'avg', label: 'AVG' },
+        { col: 'r',  label: 'R'  }, { col: 'h',   label: 'H'   },
+        { col: 'hr', label: 'HR' }, { col: 'rbi', label: 'RBI' },
+        { col: 'bb', label: 'BB' }, { col: 'k',   label: 'K'   },
+        { col: 'sb', label: 'SB' }, { col: 'cs',  label: 'CS'  },
+      ];
+      const pitStats = [
+        { col: 'pw',   label: 'W'    }, { col: 'pl',   label: 'L'    },
+        { col: 'era',  label: 'ERA'  }, { col: 'pgs',  label: 'GS'   },
+        { col: 'pg',   label: 'G'    }, { col: 'pcg',  label: 'CG'   },
+        { col: 'psho', label: 'SHO'  }, { col: 'psvo', label: 'SVO'  },
+        { col: 'psv',  label: 'SV'   }, { col: 'pbs',  label: 'BS'   },
+        { col: 'pip',  label: 'IP'   }, { col: 'ph',   label: 'H'    },
+        { col: 'pr',   label: 'R'    }, { col: 'per',  label: 'ER'   },
+        { col: 'phr',  label: 'HR'   }, { col: 'phbp', label: 'HBP'  },
+        { col: 'pbb',  label: 'BB'   }, { col: 'k',    label: 'K'    },
+        { col: 'whip', label: 'WHIP' }, { col: 'pbaa', label: 'BAA'  },
+      ];
+      let statOptsHtml;
+      if (playerFilter === 'BAT') {
+        statOptsHtml = batStats.map(s => `<option value="${s.col}">${s.label}</option>`).join('');
+      } else if (playerFilter === 'PIT') {
+        statOptsHtml = pitStats.map(s => `<option value="${s.col}">${s.label}</option>`).join('');
+      } else {
+        statOptsHtml = `<optgroup label="Batting">${batStats.map(s => `<option value="${s.col}">${s.label}</option>`).join('')}</optgroup>`
+                     + `<optgroup label="Pitching">${pitStats.map(s => `<option value="pit:${s.col}">${s.label}</option>`).join('')}</optgroup>`;
+      }
+      const opOpts = ['>=', '<=', '='].map(op =>
+        `<option value="${op}">${op === '>=' ? '≥' : op === '<=' ? '≤' : '='}</option>`
+      ).join('');
+      sfBar.innerHTML = `<div style="display:flex;align-items:center;gap:0">
+          <label style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:var(--muted);margin-right:8px">Filter by stat:</label>
+          <select class="sched-team-filter" id="stat-filter-col">
+            <option value="">— Select stat —</option>${statOptsHtml}
+          </select>
+          <select class="sched-team-filter" id="stat-filter-op" style="margin-left:4px">${opOpts}</select>
+          <input type="number" id="stat-filter-val" placeholder="Value"
+            style="width:80px;margin-left:4px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;padding:4px 8px;border:1px solid var(--line);border-radius:3px;background:var(--panel);color:var(--ink)">
+          <button class="btn sm primary" style="margin-left:6px" onclick="setStatFilter()">Add Filter</button>
+        </div>
+        <div class="stat-filter-chips" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px"></div>`;
+    }
+    // Re-render chips on every pass
+    const chipsEl = sfBar.querySelector('.stat-filter-chips');
+    if (chipsEl) {
+      if (statFilters.length === 0) {
+        chipsEl.innerHTML = '';
+      } else {
+        const opSym = op => op === '>=' ? '≥' : op === '<=' ? '≤' : '=';
+        chipsEl.innerHTML = statFilters.map((f, i) =>
+          `<span style="display:inline-flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;padding:3px 8px;border:1px solid var(--ink);border-radius:2px;background:var(--ink);color:var(--chalk)">
+            ${f.label} ${opSym(f.op)} ${f.val}
+            <button onclick="removeStatFilter(${i})" style="background:none;border:none;color:var(--chalk);cursor:pointer;font-size:0.75rem;padding:0;line-height:1">✕</button>
+          </span>`
+        ).join('') +
+        `<button class="btn sm" style="margin-left:2px" onclick="clearStatFilter()">Clear All</button>`;
+      }
+    }
+  }
+
   let players = [];
   if (playerFilter !== 'PIT') {
     allBatters().forEach(b => { if (matchesTeam(b) && (!search || b.name.toLowerCase().includes(search) || b.teamName.toLowerCase().includes(search))) players.push(b); });
@@ -826,6 +955,20 @@ export function renderPlayersTable() {
   }
   // Omit players with no accrued stats
   players = players.filter(p => p.type === 'batter' ? (p.career.pa || 0) > 0 : (p.career.g || 0) > 0);
+
+  // Apply stacked stat filters (AND logic)
+  for (const f of statFilters) {
+    let threshold = parseFloat(f.val);
+    if (isNaN(threshold)) continue;
+    const col = f.col.startsWith('pit:') ? f.col.slice(4) : f.col;
+    if (col === 'avg' || col === 'pbaa') threshold /= 1000;
+    players = players.filter(p => {
+      const val = getStatValue(p, col);
+      if (f.op === '>=') return val >= threshold;
+      if (f.op === '<=') return val <= threshold;
+      return Math.abs(val - threshold) < 0.0001;
+    });
+  }
 
   const isPitView = playerFilter === 'PIT';
   const formatIP  = ip => { const o = Math.round((ip || 0) * 3); return `${Math.floor(o / 3)}.${o % 3}`; };
