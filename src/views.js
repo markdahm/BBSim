@@ -2,17 +2,19 @@ import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl } from './utils.js';
 import { LEAGUE, saveLeague, allBatters, allPitchers } from './league.js';
 import { MLB } from './data.js';
 import { renderSimulate } from './game.js';
+import { exportSeasonArchive, renderHistory } from './history.js';
 
 // ====================================================================
 // VIEW STATE
 // ====================================================================
 let currentTeamId = null;
 let currentPlayer = null;
-let playerFilter = 'ALL';
+let playerFilter = 'BAT';
 let playerTeamFilter = '';
 let statFilters = []; // [{ col, op, val, label }]
 let sortCol = 'avg';
 let sortDir = -1;
+let historicalView = null; // { teams, leagueName, season } — when set, Players screen shows this instead of LEAGUE
 let schedBuildMode = false;
 let schedShowLoad = false;
 let schedTeamFilter = '';
@@ -23,7 +25,7 @@ let schedIntraCount = 0;
 // ====================================================================
 // NAVIGATION
 // ====================================================================
-const PAGES = ['home','players','simulate','schedule','playoffs'];
+const PAGES = ['home','players','simulate','schedule','playoffs','history'];
 export function nav(page) {
   document.querySelectorAll('details.dropdown').forEach(d => d.removeAttribute('open'));
   PAGES.forEach(p => {
@@ -39,6 +41,26 @@ export function nav(page) {
   if (page === 'simulate') renderSimulate();
   if (page === 'schedule') renderSchedule();
   if (page === 'playoffs') renderPlayoffs();
+  if (page === 'history') renderHistory();
+}
+
+// ====================================================================
+// HISTORICAL VIEW (Players screen pointing at an archived season)
+// ====================================================================
+function _activeTeams() { return historicalView ? historicalView.teams : LEAGUE.teams; }
+
+export function viewHistorySeason(archiveData) {
+  historicalView = { teams: archiveData.teams, leagueName: archiveData.leagueName, season: archiveData.season };
+  playerFilter = 'BAT';
+  playerTeamFilter = '';
+  statFilters = [];
+  sortCol = 'avg'; sortDir = -1;
+  nav('players');
+}
+
+export function exitHistoricalView() {
+  historicalView = null;
+  renderPlayersTable();
 }
 
 // ====================================================================
@@ -851,12 +873,27 @@ export function renderPlayersTable() {
   const tf = playerTeamFilter.toLowerCase();
   const matchesTeam = p => !tf || p.teamName.toLowerCase() === tf;
 
+  // Historical view banner
+  const banner = document.getElementById('historical-banner');
+  const sub = document.getElementById('players-sub');
+  if (banner) {
+    if (historicalView) {
+      banner.style.display = 'flex';
+      document.getElementById('historical-banner-label').textContent =
+        `VIEWING ARCHIVED SEASON — ${historicalView.leagueName} · ${historicalView.season}`;
+      if (sub) sub.textContent = `${historicalView.leagueName} · ${historicalView.season} Season`;
+    } else {
+      banner.style.display = 'none';
+      if (sub) sub.textContent = 'League-wide stats & cards';
+    }
+  }
+
   // Team filter dropdown
   const tfBar = document.getElementById('team-filter-bar');
   if (tfBar) {
     const divOrder = ['NL West','NL Central','NL East','AL West','AL Central','AL East'];
     const divMap = new Map();
-    for (const t of LEAGUE.teams) {
+    for (const t of _activeTeams()) {
       const div = t.division || '—';
       if (!divMap.has(div)) divMap.set(div, []);
       divMap.get(div).push(t.name);
@@ -946,12 +983,16 @@ export function renderPlayersTable() {
     }
   }
 
+  const fixName = p => p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim() || '—';
+  const activeBatters  = () => _activeTeams().flatMap(t => t.batters.map(b => ({ ...b, name: fixName(b), teamName: t.name })));
+  const activePitchers = () => _activeTeams().flatMap(t => t.pitchers.map(p => ({ ...p, name: fixName(p), teamName: t.name })));
+
   let players = [];
   if (playerFilter !== 'PIT') {
-    allBatters().forEach(b => { if (matchesTeam(b) && (!search || b.name.toLowerCase().includes(search) || b.teamName.toLowerCase().includes(search))) players.push(b); });
+    activeBatters().forEach(b => { if (matchesTeam(b) && (!search || b.name.toLowerCase().includes(search) || b.teamName.toLowerCase().includes(search))) players.push(b); });
   }
   if (playerFilter !== 'BAT') {
-    allPitchers().forEach(p => { if (matchesTeam(p) && (!search || p.name.toLowerCase().includes(search) || p.teamName.toLowerCase().includes(search))) players.push(p); });
+    activePitchers().forEach(p => { if (matchesTeam(p) && (!search || p.name.toLowerCase().includes(search) || p.teamName.toLowerCase().includes(search))) players.push(p); });
   }
   // Omit players with no accrued stats
   players = players.filter(p => p.type === 'batter' ? (p.career.pa || 0) > 0 : (p.career.g || 0) > 0);
@@ -1201,6 +1242,9 @@ export function openCardById(pid) {
 // ====================================================================
 export function clearSeason() {
   if (!confirm('Are you sure you want to delete the season stats?')) return;
+  if (confirm('Download a season archive before clearing?')) {
+    exportSeasonArchive();
+  }
   LEAGUE.teams.forEach(t => {
     [...t.batters, ...t.pitchers].forEach(p => {
       if (p.type === 'batter') {
@@ -1519,7 +1563,7 @@ export function schedDeleteAll() {
   renderSchedule();
 }
 
-export function schedRecycle() {
+export function schedRecycle(afterPage) {
   if (!confirm('Reset all stats and restart the schedule from game 1?')) return;
   // Reset all schedule games to unplayed
   (LEAGUE.schedule || []).forEach(g => { g.played = false; delete g.awayScore; delete g.homeScore; });
@@ -1538,7 +1582,8 @@ export function schedRecycle() {
   LEAGUE.playoffs = null;
   LEAGUE._schedFilter = '';
   saveLeague();
-  renderSchedule();
+  if (afterPage) nav(afterPage);
+  else renderSchedule();
 }
 
 export function schedNewSeason() {
@@ -2084,6 +2129,7 @@ function renderPlayoffBracket(cont, actions) {
         ${wsWinnerTeam ? `<div style="margin-top:16px;text-align:center">
           <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--gold);letter-spacing:3px">🏆 Champions</div>
           <div style="font-family:'Oswald',sans-serif;font-size:1.3rem;font-weight:700;margin-top:4px">${wsWinnerTeam.name}</div>
+          <div style="margin-top:12px"><button class="btn sm" onclick="exportSeasonArchive(); schedRecycle('simulate')">Rinse, Repeat</button></div>
         </div>` : ''}
         <div style="flex:1"></div>
       </div>

@@ -22,6 +22,8 @@
   <div class="nav-item" onclick="nav('playoffs')" id="nav-playoffs"><span class="nav-icon">🏆</span> Playoffs</div>
   <div class="nav-section">Game</div>
   <div class="nav-item" onclick="nav('simulate')" id="nav-simulate"><span class="nav-icon">▶</span> Simulate Game</div>
+  <div class="nav-section">History</div>
+  <div class="nav-item" onclick="nav('history')" id="nav-history"><span class="nav-icon">📂</span> Season History</div>
   <div class="league-picker">
     <div class="league-label">Season</div>
     <div class="league-name" id="season-display">2025</div>
@@ -60,14 +62,18 @@
   <!-- PLAYERS PAGE -->
   <div class="page" id="page-players">
     <div class="topbar">
-      <div><div class="topbar-title">Players</div><div class="topbar-sub">League-wide stats & cards</div></div>
+      <div><div class="topbar-title">Players</div><div class="topbar-sub" id="players-sub">League-wide stats & cards</div></div>
+      <div class="topbar-actions" id="players-topbar-actions"></div>
+    </div>
+    <div id="historical-banner" style="display:none;padding:10px 28px;background:var(--gold);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.68rem;letter-spacing:1px;display:flex;align-items:center;gap:16px">
+      <span id="historical-banner-label"></span>
+      <button class="btn sm" onclick="exitHistoricalView()" style="border-color:#fff;color:#fff;flex-shrink:0">← Current Season</button>
     </div>
     <div class="page" style="display:block;padding:24px 28px 60px">
       <div class="search-bar">
         <input class="search-input" id="player-search" placeholder="Search player name..." oninput="renderPlayersTable()">
         <div class="filter-tabs">
-          <button class="filter-tab active" onclick="setFilter('ALL',this)">All</button>
-          <button class="filter-tab" onclick="setFilter('BAT',this)">Batters</button>
+          <button class="filter-tab active" onclick="setFilter('BAT',this)">Batters</button>
           <button class="filter-tab" onclick="setFilter('PIT',this)">Pitchers</button>
         </div>
       </div>
@@ -85,6 +91,7 @@
     <div class="topbar">
       <div><div class="topbar-title">Schedule</div><div class="topbar-sub" id="schedule-sub">Season games</div></div>
       <div class="topbar-actions">
+        <button class="btn sm" onclick="exportSeasonArchive()">Export Season Archive</button>
         <button class="btn sm danger" onclick="clearSeason()">Clear Season</button>
         <button class="btn sm primary" onclick="advanceSeason()">Advance Season →</button>
       </div>
@@ -112,6 +119,26 @@
     </div>
     <div class="page" style="display:block;padding:24px 28px 60px">
       <div id="sim-container"></div>
+    </div>
+  </div>
+
+  <!-- HISTORY PAGE -->
+  <div class="page" id="page-history">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Season History</div>
+        <div class="topbar-sub">Archived season results</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn sm primary" onclick="loadHistoryFolder()">Load Folder</button>
+        <label class="btn sm" title="Load individual files if folder picker is unavailable">
+          Load Files
+          <input type="file" id="history-file-input" accept=".json" multiple style="display:none" onchange="loadHistoryFiles(this)">
+        </label>
+      </div>
+    </div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div id="history-container"></div>
     </div>
   </div>
 

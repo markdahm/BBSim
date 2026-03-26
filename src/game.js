@@ -18,6 +18,8 @@ let simMode = 'schedule';    // 'expo' | 'schedule' | 'playoffs'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
 let hideAnimation = false;   // when true, skip all per-pitch DOM updates
+let hideLiveRankings = false; // when true, suppress the live standings panel in hide-animation mode
+let progressAsPercent = false; // when true, show schedule progress as % instead of boxes
 let _prevStandingsSnap = null; // division → teamId[] sorted by rank, taken before each game's W/L update
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
 let playoffIsAutoMode = false;       // true when game was started by auto-play (not single-play)
@@ -90,6 +92,18 @@ export function renderSimulate() {
               <span class="hat-state hat-state-off">Off</span>
               <div class="hat-track"><div class="hat-thumb"></div></div>
               <span class="hat-state hat-state-on">On</span>
+            </div>
+            <div class="hat-wrap${hideLiveRankings ? ' on' : ''}" id="btn-hide-rankings" onclick="gToggleHideLiveRankings()">
+              <span class="hat-label">Hide Live Rankings</span>
+              <span class="hat-state hat-state-off">Off</span>
+              <div class="hat-track"><div class="hat-thumb"></div></div>
+              <span class="hat-state hat-state-on">On</span>
+            </div>
+            <div class="hat-wrap${progressAsPercent ? ' on' : ''}" id="btn-progress-pct" onclick="gToggleProgressDisplay()">
+              <span class="hat-label">Progress %</span>
+              <span class="hat-state hat-state-off">Boxes</span>
+              <div class="hat-track"><div class="hat-thumb"></div></div>
+              <span class="hat-state hat-state-on">%</span>
             </div>
           </div>`;
       }
@@ -197,8 +211,12 @@ function schedProgressStrip() {
   if (sched.length === 0 || simMode !== 'schedule') return '';
   const played = sched.filter(g => g.played).length;
   const current = schedGameIdx >= 0 ? 1 : 0;
+  if (progressAsPercent) {
+    const pct = sched.length > 0 ? Math.round((played / sched.length) * 100) : 0;
+    return `<div id="sched-progress-strip" style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted);margin:6px 0 2px">${played} / ${sched.length} &nbsp;<span style="color:var(--ink);font-weight:600">${pct}%</span></div>`;
+  }
   const unplayed = sched.length - played - current;
-  const box = (color) => `<div style="width:2px;height:2.5px;background:${color};border-radius:1px;flex-shrink:0"></div>`;
+  const box = (color) => `<div style="width:3px;height:3.75px;background:${color};border-radius:1px;flex-shrink:0"></div>`;
   const boxes = [
     ...Array(played).fill(box('#3b82f6')),
     ...Array(current).fill(box('#f59e0b')),
@@ -318,7 +336,7 @@ function renderLiveStandings() {
 
 function renderGameUI() {
   if (hideAnimation) {
-    document.getElementById('sim-container').innerHTML = `<div class="matchup-picker">${schedProgressStrip()}${renderLiveStandings()}</div>`;
+    document.getElementById('sim-container').innerHTML = `<div class="matchup-picker">${schedProgressStrip()}${hideLiveRankings ? '' : renderLiveStandings()}</div>`;
     return;
   }
   const away = G.away, home = G.home;
@@ -991,14 +1009,16 @@ function endGame() {
   // Snapshot standings before updating W/L so live standings panel can show rank changes
   if (hideAnimation) takeStandingsSnapshot();
 
-  // Update W/L records
-  if (awayWon)      { G.away.w++; G.home.l++; }
-  else if (homeWon) { G.home.w++; G.away.l++; }
-  G.away.runsFor      = (G.away.runsFor     || 0) + G.runs[0];
-  G.away.runsAgainst  = (G.away.runsAgainst || 0) + G.runs[1];
-  G.home.runsFor      = (G.home.runsFor     || 0) + G.runs[1];
-  G.home.runsAgainst  = (G.home.runsAgainst || 0) + G.runs[0];
-  LEAGUE.gamesPlayed++;
+  // Update W/L records (regular season only — playoffs don't affect season standings)
+  if (simMode !== 'playoffs') {
+    if (awayWon)      { G.away.w++; G.home.l++; }
+    else if (homeWon) { G.home.w++; G.away.l++; }
+    G.away.runsFor      = (G.away.runsFor     || 0) + G.runs[0];
+    G.away.runsAgainst  = (G.away.runsAgainst || 0) + G.runs[1];
+    G.home.runsFor      = (G.home.runsFor     || 0) + G.runs[1];
+    G.home.runsAgainst  = (G.home.runsAgainst || 0) + G.runs[0];
+    LEAGUE.gamesPlayed++;
+  }
 
   // Determine pitcher decisions MLB-style (W / L / SV)
   let winP = null, lossP = null, saveP = null;
@@ -1066,9 +1086,11 @@ function endGame() {
       p.career.er += gs.er;
       p.career.r   = (p.career.r   || 0) + (gs.r   || 0);
       p.career.bf  = (p.career.bf  || 0) + (gs.bf  || 0);
-      if (p === winP)  p.career.w++;
-      if (p === lossP) p.career.l++;
-      if (p === saveP) p.career.sv = (p.career.sv || 0) + 1;
+      if (simMode !== 'playoffs') {
+        if (p === winP)  p.career.w++;
+        if (p === lossP) p.career.l++;
+        if (p === saveP) p.career.sv = (p.career.sv || 0) + 1;
+      }
     });
     // Complete game / shutout for the sole starter
     if (pitched.length === 1) {
@@ -1079,16 +1101,19 @@ function endGame() {
 
   // Save opportunities — credit svo to any pitcher who entered with a 1–3 run lead
   // (includes blown saves on the losing team and holds on the winning team)
-  [G.away, G.home].forEach((team, ti) => {
-    team.pitchers.filter(p => p.game && p.game.pitches > 0 && p.game.entryScore).forEach(p => {
-      const es = p.game.entryScore;
-      const myEntry  = ti === 0 ? es.away : es.home;
-      const oppEntry = ti === 0 ? es.home : es.away;
-      if (myEntry - oppEntry >= 1 && myEntry - oppEntry <= 3) {
-        p.career.svo = (p.career.svo || 0) + 1;
-      }
+  // Skipped during playoffs — these are not regular season stats.
+  if (simMode !== 'playoffs') {
+    [G.away, G.home].forEach((team, ti) => {
+      team.pitchers.filter(p => p.game && p.game.pitches > 0 && p.game.entryScore).forEach(p => {
+        const es = p.game.entryScore;
+        const myEntry  = ti === 0 ? es.away : es.home;
+        const oppEntry = ti === 0 ? es.home : es.away;
+        if (myEntry - oppEntry >= 1 && myEntry - oppEntry <= 3) {
+          p.career.svo = (p.career.svo || 0) + 1;
+        }
+      });
     });
-  });
+  }
 
   // Games played for lineup batters
   [G.away, G.home].forEach(team => {
@@ -1328,6 +1353,19 @@ export function gToggleHideAnimation() {
   hideAnimation = !hideAnimation;
   const el = document.getElementById('btn-hide-anim');
   if (el) el.classList.toggle('on', hideAnimation);
+}
+
+export function gToggleHideLiveRankings() {
+  hideLiveRankings = !hideLiveRankings;
+  const el = document.getElementById('btn-hide-rankings');
+  if (el) el.classList.toggle('on', hideLiveRankings);
+}
+
+export function gToggleProgressDisplay() {
+  progressAsPercent = !progressAsPercent;
+  const el = document.getElementById('btn-progress-pct');
+  if (el) el.classList.toggle('on', progressAsPercent);
+  updateSchedProgressStrip();
 }
 
 export function gStopAuto(btn) {

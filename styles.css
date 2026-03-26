@@ -728,3 +728,28 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
   color:var(--muted); margin-left:auto;
 }
 .playoff-auto-all-btn { margin-top:12px; }
+
+/* ── SEASON HISTORY TABLE ── */
+.ht-wrap { overflow-x:auto; }
+.history-table { border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:4px; font-family:'Roboto Condensed',sans-serif; white-space:nowrap; }
+.history-table th { font-size:0.6rem; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; color:var(--muted); padding:8px 12px; text-align:center; border-bottom:2px solid var(--line); background:var(--chalk); cursor:pointer; transition:color 0.13s; }
+.history-table th:hover { color:var(--ink); }
+.history-table th.ht-sort { color:var(--ink); }
+.ht-group-row th { font-size:0.58rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; padding:5px 12px; border-bottom:1px solid var(--line); }
+.ht-group { text-align:center; }
+.ht-group-champ { color:var(--gold); border-left:2px solid var(--gold); border-right:1px solid var(--line); }
+.ht-group-ru { color:var(--sky); border-left:2px solid var(--sky); }
+.history-table td { padding:8px 12px; border-bottom:1px solid #f5f5f5; font-size:0.8rem; text-align:center; }
+.history-table td:first-child { font-family:'IBM Plex Mono',monospace; font-size:0.72rem; font-weight:600; text-align:left; }
+.history-table tbody tr:hover td { background:#fafafa; }
+.history-table tbody tr:last-child td { border-bottom:none; }
+.ht-name { text-align:left !important; display:flex; align-items:center; min-width:160px; }
+.ht-league { text-align:left !important; font-family:'IBM Plex Sans',sans-serif; font-size:0.75rem; color:var(--muted); min-width:120px; }
+.ht-na { color:var(--muted); font-style:italic; }
+.ht-champ-badge { display:inline-block; background:var(--gold); color:#fff; font-family:'IBM Plex Mono',monospace; font-size:0.48rem; font-weight:700; letter-spacing:1px; padding:1px 4px; border-radius:2px; margin-left:5px; vertical-align:middle; }
+.ht-del { padding:4px 8px !important; }
+.ht-del-btn { background:none; border:1px solid var(--line); border-radius:2px; color:var(--muted); font-size:0.68rem; cursor:pointer; padding:3px 7px; transition:all 0.12s; }
+.ht-del-btn:hover { border-color:var(--accent); color:var(--accent); background:#fff5f5; }
+.ht-view-btn { background:none; border:1px solid var(--sky); border-radius:2px; color:var(--sky); font-family:'IBM Plex Mono',monospace; font-size:0.6rem; letter-spacing:0.5px; text-transform:uppercase; cursor:pointer; padding:3px 7px; margin-right:4px; transition:all 0.12s; }
+.ht-view-btn:hover { background:var(--sky); color:#fff; }
+.ht-filename { text-align:left !important; font-family:'IBM Plex Mono',monospace; font-size:0.65rem; color:var(--ink); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
