@@ -102,6 +102,23 @@ export function buildSeasonArchive() {
           return played ? total + wins : total;
         }, 0);
 
+      const countPlayoffLosses = teamId =>
+        playoffs.series.reduce((total, s) => {
+          const played = s.higherSeedId === teamId || s.lowerSeedId === teamId;
+          if (!played) return total;
+          const losses = s.higherSeedId === teamId ? s.lowerSeedWins : s.higherSeedWins;
+          return total + losses;
+        }, 0);
+
+      const countPlayoffRuns = (teamId, forTeam) =>
+        playoffs.series.reduce((total, s) => {
+          return total + (s.games || []).reduce((gs, g) => {
+            if (g.homeId === teamId) return gs + (forTeam ? (g.homeScore || 0) : (g.awayScore || 0));
+            if (g.awayId  === teamId) return gs + (forTeam ? (g.awayScore || 0) : (g.homeScore || 0));
+            return gs;
+          }, 0);
+        }, 0);
+
       const buildTeamStats = teamId => {
         const team = LEAGUE.teams.find(t => t.id === teamId);
         if (!team) return null;
@@ -119,6 +136,9 @@ export function buildSeasonArchive() {
           nickname: team.nickname,
           color: team.color || '#111',
           playoffWins: countPlayoffWins(teamId),
+          playoffLosses: countPlayoffLosses(teamId),
+          playoffRunsFor: countPlayoffRuns(teamId, true),
+          playoffRunsAgainst: countPlayoffRuns(teamId, false),
           teamHR: totalHR,
           battingAvg: totalAB > 0 ? totalH / totalAB : 0,
           ERA:  totalIP > 0 ? (totalER / totalIP) * 9 : 0,
@@ -298,6 +318,9 @@ function getSortVal(entry, col) {
     case 'champ':       return c ? c.teamName.toLowerCase() : '';
     case 'cScore':      return c ? (computeSeasonScores(d)[c.teamId] ?? -1) : -1;
     case 'cWins':       return c ? c.playoffWins : -1;
+    case 'cLosses':     return c ? (c.playoffLosses ?? -1) : -1;
+    case 'cRF':         return c ? (c.playoffRunsFor ?? -1) : -1;
+    case 'cRA':         return c ? (c.playoffRunsAgainst ?? -1) : -1;
     case 'cHR':         return c ? c.teamHR : -1;
     case 'cAVG':        return c ? c.battingAvg : -1;
     case 'cERA':        return c ? c.ERA : 99;
@@ -305,6 +328,9 @@ function getSortVal(entry, col) {
     case 'ru':          return r ? r.teamName.toLowerCase() : '';
     case 'ruScore':     return r ? (computeSeasonScores(d)[r.teamId] ?? -1) : -1;
     case 'ruWins':      return r ? r.playoffWins : -1;
+    case 'ruLosses':    return r ? (r.playoffLosses ?? -1) : -1;
+    case 'ruRF':        return r ? (r.playoffRunsFor ?? -1) : -1;
+    case 'ruRA':        return r ? (r.playoffRunsAgainst ?? -1) : -1;
     case 'ruHR':        return r ? r.teamHR : -1;
     case 'ruAVG':       return r ? r.battingAvg : -1;
     case 'ruERA':       return r ? r.ERA : 99;
@@ -356,13 +382,16 @@ export function renderHistory() {
   };
 
   const teamCols = (team, isChamp, scores) => {
-    if (!team) return '<td class="ht-na" colspan="7">—</td>';
+    if (!team) return '<td class="ht-na" colspan="10">—</td>';
     const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${team.color};margin-right:5px;vertical-align:middle"></span>`;
     const name = `${team.city} ${team.nickname || team.teamName}`;
     const badge = isChamp ? ' <span class="ht-champ-badge">WS</span>' : '';
     return `<td class="ht-name">${dot}${name}${badge}</td>
       ${scoreCell(scores, team.teamId)}
       ${stat(team.playoffWins, 0, 'Playoff wins')}
+      ${stat(team.playoffLosses ?? null, 0, 'Playoff losses')}
+      ${stat(team.playoffRunsFor ?? null, 0, 'Playoff runs scored')}
+      ${stat(team.playoffRunsAgainst ?? null, 0, 'Playoff runs allowed')}
       ${stat(team.teamHR, 0, 'Team home runs')}
       ${statAvg(team.battingAvg)}
       ${stat(team.ERA, 2, 'Team ERA')}
@@ -392,8 +421,8 @@ export function renderHistory() {
         <thead>
           <tr class="ht-group-row">
             <th colspan="2"></th>
-            <th colspan="7" class="ht-group ht-group-champ">Champion</th>
-            <th colspan="7" class="ht-group ht-group-ru">Runner-Up</th>
+            <th colspan="10" class="ht-group ht-group-champ">Champion</th>
+            <th colspan="10" class="ht-group ht-group-ru">Runner-Up</th>
             <th></th>
           </tr>
           <tr>
@@ -402,6 +431,9 @@ export function renderHistory() {
             ${th('champ', 'Team')}
             ${th('cScore', 'Score', 'Season score 0–100')}
             ${th('cWins', 'PW', 'Playoff wins')}
+            ${th('cLosses', 'PL', 'Playoff losses')}
+            ${th('cRF', 'RF', 'Playoff runs scored')}
+            ${th('cRA', 'RA', 'Playoff runs allowed')}
             ${th('cHR', 'HR', 'Home runs')}
             ${th('cAVG', 'AVG', 'Team batting average')}
             ${th('cERA', 'ERA', 'Team ERA')}
@@ -409,6 +441,9 @@ export function renderHistory() {
             ${th('ru', 'Team')}
             ${th('ruScore', 'Score', 'Season score 0–100')}
             ${th('ruWins', 'PW', 'Playoff wins')}
+            ${th('ruLosses', 'PL', 'Playoff losses')}
+            ${th('ruRF', 'RF', 'Playoff runs scored')}
+            ${th('ruRA', 'RA', 'Playoff runs allowed')}
             ${th('ruHR', 'HR', 'Home runs')}
             ${th('ruAVG', 'AVG', 'Team batting average')}
             ${th('ruERA', 'ERA', 'Team ERA')}

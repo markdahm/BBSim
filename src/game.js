@@ -1132,6 +1132,11 @@ function endGame() {
     if (sg) { sg.played = true; sg.awayScore = G.runs[0]; sg.homeScore = G.runs[1]; }
     schedGameIdx = -1;
     updateSchedProgressStrip();
+    if (nextSchedIdx(LEAGUE.schedule) === -1) {
+      saveLeague();
+      window.nav('playoffs');
+      return;
+    }
   }
 
   // Playoff series advancement
@@ -1371,6 +1376,10 @@ export function gToggleProgressDisplay() {
 export function gStopAuto(btn) {
   autoMultiRemaining = 0;
   if (btn) { btn.textContent = 'Stopping…'; btn.disabled = true; }
+}
+
+export function stopAfterCurrentGame() {
+  autoMultiRemaining = 0;
 }
 
 export function gSetDelay(v) {

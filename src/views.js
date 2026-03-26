@@ -1,7 +1,7 @@
 import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl } from './utils.js';
 import { LEAGUE, saveLeague, allBatters, allPitchers } from './league.js';
 import { MLB } from './data.js';
-import { renderSimulate } from './game.js';
+import { renderSimulate, stopAfterCurrentGame } from './game.js';
 import { exportSeasonArchive, renderHistory } from './history.js';
 
 // ====================================================================
@@ -27,6 +27,9 @@ let schedIntraCount = 0;
 // ====================================================================
 const PAGES = ['home','players','simulate','schedule','playoffs','history'];
 export function nav(page) {
+  if (page !== 'simulate' && document.getElementById('page-simulate')?.classList.contains('active')) {
+    stopAfterCurrentGame();
+  }
   document.querySelectorAll('details.dropdown').forEach(d => d.removeAttribute('open'));
   PAGES.forEach(p => {
     document.getElementById(`page-${p}`).classList.remove('active');
