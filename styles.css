@@ -62,6 +62,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .btn.sm { padding:5px 12px; font-size:0.6rem; }
 .btn.danger { border-color:var(--accent); color:var(--accent); }
 .btn.danger:hover { background:var(--accent); color:#fff; }
+.btn:disabled { opacity:0.35; cursor:not-allowed; pointer-events:none; }
 
 /* ── HIDE ANIMATION TOGGLE SWITCH ── */
 .hat-wrap { display:inline-flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; user-select:none; }
@@ -753,3 +754,13 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .ht-view-btn { background:none; border:1px solid var(--sky); border-radius:2px; color:var(--sky); font-family:'IBM Plex Mono',monospace; font-size:0.6rem; letter-spacing:0.5px; text-transform:uppercase; cursor:pointer; padding:3px 7px; margin-right:4px; transition:all 0.12s; }
 .ht-view-btn:hover { background:var(--sky); color:#fff; }
 .ht-filename { text-align:left !important; font-family:'IBM Plex Mono',monospace; font-size:0.65rem; color:var(--ink); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ta-panel { background:var(--panel); border-radius:6px; box-shadow:0 20px 60px rgba(0,0,0,0.4); width:100%; max-width:520px; max-height:80vh; display:flex; flex-direction:column; overflow:hidden; }
+.ta-header { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+.ta-body { padding:20px 24px 24px; overflow-y:auto; }
+.ta-section-label { font-family:'IBM Plex Mono',monospace; font-size:0.58rem; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+.ta-nav-btn { background:none; border:2px solid var(--ink); border-radius:3px; font-size:0.9rem; padding:3px 10px; cursor:pointer; transition:all 0.12s; flex-shrink:0; }
+.ta-nav-btn:hover:not(:disabled) { background:var(--ink); color:var(--chalk); }
+.ta-nav-btn:disabled { opacity:0.25; cursor:not-allowed; }
+.ht-arrow-col { padding:4px 6px !important; }
+.ht-arrow-btn { background:var(--ink); border:none; border-radius:3px; color:var(--chalk); font-size:0.7rem; cursor:pointer; padding:4px 9px; transition:all 0.12s; }
+.ht-arrow-btn:hover { background:var(--accent); }

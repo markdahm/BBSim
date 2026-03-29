@@ -8,6 +8,10 @@ let dirHandle = null;      // FileSystemDirectoryHandle if loaded via folder pic
 let sortCol = 'season';
 let sortDir = -1;          // -1 = desc (newest first)
 
+// Season viewer navigation state
+let seasonViewerList = []; // original historySeasons indices in current sort order
+let seasonViewerPos  = 0;
+
 // ====================================================================
 // SEASON SCORE  (0–100, z-score composite across all teams in archive)
 // ====================================================================
@@ -178,6 +182,13 @@ export function buildSeasonArchive() {
     })),
   }));
 
+  // Collect all team IDs that appeared in any playoff series
+  const playoffIds = new Set();
+  for (const s of (LEAGUE.playoffs?.series || [])) {
+    if (s.higherSeedId != null) playoffIds.add(s.higherSeedId);
+    if (s.lowerSeedId  != null) playoffIds.add(s.lowerSeedId);
+  }
+
   return {
     type: 'bbsim-season-archive',
     leagueName: LEAGUE.name,
@@ -185,6 +196,7 @@ export function buildSeasonArchive() {
     gamesPlayed: LEAGUE.gamesPlayed || 0,
     champion,
     runnerUp,
+    playoffTeamIds: [...playoffIds],
     teams,
   };
 }
@@ -295,6 +307,29 @@ export async function deleteHistorySeason(idx) {
 }
 
 // ====================================================================
+// SEASON VIEWER NAVIGATION STATE
+// ====================================================================
+export function getAllHistorySeasons() {
+  return historySeasons;
+}
+
+export function getSeasonViewerEntry() {
+  return historySeasons[seasonViewerList[seasonViewerPos]] ?? null;
+}
+export function getSeasonViewerInfo() {
+  return { pos: seasonViewerPos, total: seasonViewerList.length };
+}
+export function setSeasonViewerPos(idx) {
+  if (idx >= 0 && idx < seasonViewerList.length) seasonViewerPos = idx;
+}
+export function stepSeasonViewer(dir) {
+  const next = seasonViewerPos + dir;
+  if (next < 0 || next >= seasonViewerList.length) return false;
+  seasonViewerPos = next;
+  return true;
+}
+
+// ====================================================================
 // SORT
 // ====================================================================
 export function historySort(col) {
@@ -359,6 +394,7 @@ export function renderHistory() {
     if (typeof av === 'string') return sortDir * av.localeCompare(bv);
     return (av - bv) * sortDir;
   });
+  seasonViewerList = sorted.map(e => historySeasons.indexOf(e));
 
   const th = (col, label, title = '') => {
     const active = sortCol === col;
@@ -405,12 +441,14 @@ export function renderHistory() {
     const canView = Array.isArray(d.teams) && d.teams.length > 0;
     return `<tr>
       <td class="ht-filename" title="${entry.filename}">${entry.filename.replace(/\.json$/i, '')}</td>
-      <td class="ht-league">${d.leagueName || '—'}</td>
       ${teamCols(d.champion, true, scores)}
       ${teamCols(d.runnerUp, false, scores)}
       <td class="ht-del" style="white-space:nowrap">
         ${canView ? `<button class="ht-view-btn" onclick="viewHistorySeason(historyGetData(${origIdx}))" title="View in Players screen">Players</button>` : ''}
         <button class="ht-del-btn" onclick="deleteHistorySeason(${origIdx})" title="Remove from history">✕</button>
+      </td>
+      <td class="ht-arrow-col">
+        ${canView ? `<button class="ht-arrow-btn" onclick="viewSeasonStandings(${si})" title="View standings for this season">▶</button>` : ''}
       </td>
     </tr>`;
   });
@@ -420,14 +458,13 @@ export function renderHistory() {
       <table class="history-table">
         <thead>
           <tr class="ht-group-row">
-            <th colspan="2"></th>
+            <th colspan="1"></th>
             <th colspan="10" class="ht-group ht-group-champ">Champion</th>
             <th colspan="10" class="ht-group ht-group-ru">Runner-Up</th>
-            <th></th>
+            <th colspan="2"></th>
           </tr>
           <tr>
             ${th('season', 'Season')}
-            ${th('league', 'League')}
             ${th('champ', 'Team')}
             ${th('cScore', 'Score', 'Season score 0–100')}
             ${th('cWins', 'PW', 'Playoff wins')}
@@ -448,6 +485,7 @@ export function renderHistory() {
             ${th('ruAVG', 'AVG', 'Team batting average')}
             ${th('ruERA', 'ERA', 'Team ERA')}
             ${th('ruWHIP', 'WHIP', 'Team WHIP')}
+            <th></th>
             <th></th>
           </tr>
         </thead>

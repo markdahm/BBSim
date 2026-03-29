@@ -142,7 +142,29 @@
     </div>
   </div>
 
+  <!-- SEASON VIEWER PAGE -->
+  <div class="page" id="page-season-viewer">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Season Standings</div>
+        <div class="topbar-sub" id="sv-sub"></div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn sm" id="sv-prev" onclick="seasonViewerNav(-1)">← Previous</button>
+        <button class="btn sm" id="sv-next" onclick="seasonViewerNav(1)">Next →</button>
+        <button class="btn sm" onclick="nav('history')">← Back to History</button>
+      </div>
+    </div>
+    <div id="sv-banner-bar" style="padding:12px 28px;background:#dc2626;color:#fff;font-family:'Oswald',sans-serif;font-size:1.1rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;text-align:center"></div>
+    <div class="page" style="display:block;padding:24px 28px 60px">
+      <div id="sv-standings-container"></div>
+    </div>
+  </div>
+
 </div><!-- /main -->
+
+<!-- TEAM ANALYSIS OVERLAY -->
+<div id="team-analysis-overlay" onclick="closeTeamAnalysis()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:300;align-items:center;justify-content:center;padding:20px"></div>
 
 <!-- BASEBALL CARD OVERLAY -->
 <div class="card-overlay" id="card-overlay" onclick="closeCard(event)">

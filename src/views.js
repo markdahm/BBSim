@@ -2,7 +2,7 @@ import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl } from './utils.js';
 import { LEAGUE, saveLeague, allBatters, allPitchers } from './league.js';
 import { MLB } from './data.js';
 import { renderSimulate, stopAfterCurrentGame } from './game.js';
-import { exportSeasonArchive, renderHistory } from './history.js';
+import { exportSeasonArchive, renderHistory, getSeasonViewerEntry, getSeasonViewerInfo, setSeasonViewerPos, stepSeasonViewer, getAllHistorySeasons } from './history.js';
 
 // ====================================================================
 // VIEW STATE
@@ -25,7 +25,7 @@ let schedIntraCount = 0;
 // ====================================================================
 // NAVIGATION
 // ====================================================================
-const PAGES = ['home','players','simulate','schedule','playoffs','history'];
+const PAGES = ['home','players','simulate','schedule','playoffs','history','season-viewer'];
 export function nav(page) {
   if (page !== 'simulate' && document.getElementById('page-simulate')?.classList.contains('active')) {
     stopAfterCurrentGame();
@@ -45,6 +45,7 @@ export function nav(page) {
   if (page === 'schedule') renderSchedule();
   if (page === 'playoffs') renderPlayoffs();
   if (page === 'history') renderHistory();
+  if (page === 'season-viewer') renderSeasonViewer();
 }
 
 // ====================================================================
@@ -64,6 +65,237 @@ export function viewHistorySeason(archiveData) {
 export function exitHistoricalView() {
   historicalView = null;
   renderPlayersTable();
+}
+
+// ====================================================================
+// SEASON VIEWER (standings from an archived data file)
+// ====================================================================
+let svTeamList = []; // [{id, name, color}] in display order for current season viewer
+let svTeamIdx  = 0;
+
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('page-season-viewer')?.classList.contains('active')) return;
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); seasonViewerNav(-1); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); seasonViewerNav(1);  }
+});
+
+export function viewSeasonStandings(sortedIdx) {
+  setSeasonViewerPos(sortedIdx);
+  nav('season-viewer');
+}
+
+export function seasonViewerNav(dir) {
+  stepSeasonViewer(dir);
+  renderSeasonViewer();
+}
+
+export function renderSeasonViewer() {
+  const entry = getSeasonViewerEntry();
+  if (!entry) { nav('history'); return; }
+
+  const { data, filename } = entry;
+  const archiveTeams = data.teams || [];
+  const { pos, total } = getSeasonViewerInfo();
+  const filenameDisplay = filename.replace(/\.json$/i, '');
+
+  const bannerBar = document.getElementById('sv-banner-bar');
+  if (bannerBar) bannerBar.textContent = `Viewing Data File: ${filenameDisplay}`;
+
+  const svSub = document.getElementById('sv-sub');
+  if (svSub) svSub.textContent = `${data.season || '—'} Season · ${archiveTeams.length} Teams`;
+
+  const prevBtn = document.getElementById('sv-prev');
+  const nextBtn = document.getElementById('sv-next');
+  if (prevBtn) prevBtn.disabled = pos <= 0;
+  if (nextBtn) nextBtn.disabled = pos >= total - 1;
+
+  const cont = document.getElementById('sv-standings-container');
+  if (!cont) return;
+
+  svTeamList = []; // reset team list for this render
+
+  const leagueOrder = ['American League', 'National League'];
+  const divisionOrder = {
+    'American League': ['AL East', 'AL Central', 'AL West'],
+    'National League': ['NL East', 'NL Central', 'NL West'],
+  };
+
+  const divMap = new Map();
+  for (const t of archiveTeams) {
+    const key = t.division || '—';
+    if (!divMap.has(key)) divMap.set(key, { league: t.league || '', teams: [] });
+    divMap.get(key).teams.push(t);
+  }
+  const leagueDivs = new Map();
+  for (const [divName, { league }] of divMap) {
+    if (!leagueDivs.has(league)) leagueDivs.set(league, []);
+    leagueDivs.get(league).push(divName);
+  }
+  const sortedLeagues = [...leagueDivs.keys()].sort((a, b) => {
+    const ai = leagueOrder.indexOf(a), bi = leagueOrder.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1; if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  const mkDivCard = divName => {
+    const e = divMap.get(divName);
+    if (!e) return '';
+    const divTeams = e.teams.slice().sort((a, b) => {
+      const pctA = (a.w + a.l) === 0 ? 0 : a.w / (a.w + a.l);
+      const pctB = (b.w + b.l) === 0 ? 0 : b.w / (b.w + b.l);
+      if (pctB !== pctA) return pctB - pctA;
+      return b.w - a.w;
+    });
+    const leader = divTeams[0];
+    let rows = '';
+    divTeams.forEach((t, i) => {
+      const pct = (t.w + t.l) === 0 ? '.000' : (t.w / (t.w + t.l)).toFixed(3).replace(/^0\./, '.');
+      const gb  = i === 0 ? '—' : (((leader.w - leader.l) - (t.w - t.l)) / 2).toFixed(1);
+      const tColor = t.color || '#888';
+      const tName = (t.name || `${t.city || ''} ${t.nickname || ''}`.trim());
+      const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${tColor};margin-right:6px;vertical-align:middle;flex-shrink:0"></span>`;
+      const teamIdx = svTeamList.length;
+      svTeamList.push({ id: t.id, name: tName, color: tColor });
+      rows += `<tr style="cursor:pointer" onclick="showTeamAnalysis(${teamIdx})"><td class="team-cell">${dot}${tName}</td><td>${t.w}</td><td>${t.l}</td><td>${pct}</td><td class="gb-cell">${gb}</td></tr>`;
+    });
+    return `<div class="division-card">
+      <div class="division-head">${divName}</div>
+      <table class="standings-table">
+        <thead><tr><th>Team</th><th style="width:46px">W</th><th style="width:46px">L</th><th style="width:62px">PCT</th><th style="width:68px">GB</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  };
+
+  const cols = sortedLeagues.map(leagueName => {
+    const divs = divisionOrder[leagueName] || leagueDivs.get(leagueName).sort();
+    return `<div style="display:flex;flex-direction:column;gap:20px">
+      <div style="font-family:'Oswald',sans-serif;font-size:1.3rem;font-weight:600;letter-spacing:2px;text-transform:uppercase;text-align:center;padding-bottom:8px;border-bottom:2px solid var(--ink)">${leagueName}</div>
+      ${divs.map(mkDivCard).join('')}
+    </div>`;
+  });
+
+  cont.innerHTML = cols.length === 2
+    ? `<div style="width:fit-content"><div style="font-family:'Oswald',sans-serif;font-size:1.45rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;text-align:center;margin-bottom:16px">STANDINGS</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">${cols.join('')}</div></div>`
+    : cols.join('');
+}
+
+export function teamAnalysisNav(dir) {
+  const next = svTeamIdx + dir;
+  if (next < 0 || next >= svTeamList.length) return;
+  svTeamIdx = next;
+  _renderTeamAnalysis();
+}
+
+export function showTeamAnalysis(idx) {
+  svTeamIdx = idx;
+  _renderTeamAnalysis();
+}
+
+function _renderTeamAnalysis() {
+  const { id: teamId, name: teamName, color: teamColor } = svTeamList[svTeamIdx] || {};
+  if (!teamId == null || !teamName) return;
+  const allSeasons = getAllHistorySeasons();
+  const ordinal = n => n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+
+  // Assign sequence numbers across the whole collection (oldest filename = 1)
+  const seqMap = new Map();
+  [...allSeasons].sort((a, b) => a.filename.localeCompare(b.filename))
+    .forEach((s, i) => seqMap.set(s.filename, i + 1));
+
+  // Build per-season results
+  const results = [];
+  for (const { filename, data } of allSeasons) {
+    const teams = data.teams || [];
+    const thisTeam = teams.find(t => t.id === teamId || t.name === teamName);
+    if (!thisTeam) continue;
+    const divTeams = teams.filter(t => t.division === thisTeam.division)
+      .sort((a, b) => {
+        const pctA = (a.w + a.l) === 0 ? 0 : a.w / (a.w + a.l);
+        const pctB = (b.w + b.l) === 0 ? 0 : b.w / (b.w + b.l);
+        if (pctB !== pctA) return pctB - pctA;
+        return b.w - a.w;
+      });
+    const pos = divTeams.findIndex(t => t.id === teamId || t.name === teamName) + 1;
+    const madePlayoffs = Array.isArray(data.playoffTeamIds)
+      ? data.playoffTeamIds.includes(teamId)
+      : (data.champion?.teamId === teamId || data.runnerUp?.teamId === teamId);
+    const isChampion = data.champion?.teamId === teamId;
+    if (pos > 0) results.push({ seq: seqMap.get(filename) ?? '?', w: thisTeam.w, l: thisTeam.l, pos, madePlayoffs, isChampion });
+  }
+  results.sort((a, b) => a.seq - b.seq);
+
+  // Tally positions
+  const tally = {};
+  let maxPos = 0;
+  for (const r of results) { tally[r.pos] = (tally[r.pos] || 0) + 1; if (r.pos > maxPos) maxPos = r.pos; }
+  const maxCount = Math.max(...Object.values(tally), 1);
+
+  const tallyRows = Array.from({ length: maxPos }, (_, i) => i + 1).map(pos => {
+    const count = tally[pos] || 0;
+    const barW = Math.round((count / maxCount) * 140);
+    return `<tr>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;font-weight:700;width:36px;text-align:right;padding-right:14px;color:${pos === 1 ? teamColor : 'var(--ink)'}">${ordinal(pos)}</td>
+      <td><div style="height:16px;width:${barW}px;background:${teamColor};border-radius:2px;opacity:${1 - (pos - 1) * 0.12};min-width:${count > 0 ? 4 : 0}px"></div></td>
+      <td style="padding-left:10px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--muted)">${count} time${count !== 1 ? 's' : ''}</td>
+    </tr>`;
+  }).join('');
+
+  const detailRows = results.map(r => {
+    const playoffStyle = r.madePlayoffs
+      ? 'background:rgba(184,134,11,0.12);border-left:3px solid var(--gold);'
+      : 'border-left:3px solid transparent;';
+    const badge = r.isChampion
+      ? ' <span style="font-size:0.85rem;line-height:1">👑</span>'
+      : r.madePlayoffs
+        ? ' <span style="font-size:0.55rem;font-weight:700;color:var(--gold);letter-spacing:0.5px">PO</span>'
+        : '';
+    return `<tr style="${playoffStyle}">
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;font-weight:600;padding:5px 10px 5px 6px;text-align:center">${r.seq}${badge}</td>
+      <td style="padding:5px 10px;text-align:center">${r.w}</td>
+      <td style="padding:5px 10px;text-align:center">${r.l}</td>
+      <td style="padding:5px 6px 5px 10px;text-align:center;font-weight:700;color:${r.pos === 1 ? teamColor : 'var(--ink)'}">${ordinal(r.pos)}</td>
+    </tr>`;
+  }).join('');
+
+  const dot = `<span style="display:inline-block;width:13px;height:13px;border-radius:50%;background:${teamColor};margin-right:9px;vertical-align:middle;flex-shrink:0"></span>`;
+  const overlay = document.getElementById('team-analysis-overlay');
+  if (!overlay) return;
+
+  const prevDis = svTeamIdx <= 0 ? 'disabled' : '';
+  const nextDis = svTeamIdx >= svTeamList.length - 1 ? 'disabled' : '';
+
+  overlay.innerHTML = `
+    <div class="ta-panel" onclick="event.stopPropagation()">
+      <div class="ta-header">
+        <button class="ta-nav-btn" onclick="teamAnalysisNav(-1)" ${prevDis}>←</button>
+        <div style="font-family:'Oswald',sans-serif;font-size:1.2rem;font-weight:600;letter-spacing:1px;display:flex;align-items:center;flex:1;justify-content:center">${dot}${teamName}</div>
+        <button class="ta-nav-btn" onclick="teamAnalysisNav(1)" ${nextDis}>→</button>
+        <button onclick="closeTeamAnalysis()" style="background:none;border:2px solid var(--ink);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:0.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px">✕</button>
+      </div>
+      <div class="ta-body">
+        ${results.length === 0 ? `<div style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:0.75rem">No data found for this team across loaded seasons.</div>` : `
+        <div class="ta-section-label">Division Finish — ${results.length} season${results.length !== 1 ? 's' : ''} on record</div>
+        <table style="border-collapse:collapse;margin-bottom:24px">${tallyRows}</table>
+        <div class="ta-section-label">Season by Season</div>
+        <table style="border-collapse:collapse;width:100%">
+          <thead><tr style="font-family:'IBM Plex Mono',monospace;font-size:0.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">
+            <th style="text-align:center;padding:4px 10px 6px 0">#</th>
+            <th style="padding:4px 10px;text-align:center">W</th>
+            <th style="padding:4px 10px;text-align:center">L</th>
+            <th style="padding:4px 0 6px 10px;text-align:center">Finish</th>
+          </tr></thead>
+          <tbody style="font-family:'IBM Plex Mono',monospace">${detailRows}</tbody>
+        </table>`}
+      </div>
+    </div>`;
+  overlay.style.display = 'flex';
+}
+
+export function closeTeamAnalysis() {
+  const overlay = document.getElementById('team-analysis-overlay');
+  if (overlay) overlay.style.display = 'none';
 }
 
 // ====================================================================

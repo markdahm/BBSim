@@ -3,10 +3,12 @@
 // Entry point: imports modules, exposes window globals, boots app.
 // ====================================================================
 import { initLeague, importRosters, exportLeague } from './src/league.js';
-import { exportSeasonArchive, loadHistoryFolder, loadHistoryFiles, deleteHistorySeason, renderHistory, historySort, historyGetData } from './src/history.js';
+import { exportSeasonArchive, loadHistoryFolder, loadHistoryFiles, deleteHistorySeason, renderHistory, historySort, historyGetData, getSeasonViewerEntry, getSeasonViewerInfo, setSeasonViewerPos, stepSeasonViewer } from './src/history.js';
 import {
   nav, editLeagueName, saveLeagueName, cancelLeagueName, clearSeason, advanceSeason,
   viewHistorySeason, exitHistoricalView,
+  viewSeasonStandings, seasonViewerNav, renderSeasonViewer,
+  showTeamAnalysis, closeTeamAnalysis, teamAnalysisNav,
   openTeam, editTeamName, saveTeamName, cancelTeamName, uploadTeamLogo, removeTeamLogo,
   openBatterTable, closeBatterTable, sortBatterTable,
   openPitcherTable, closePitcherTable, sortPitcherTable,
@@ -42,6 +44,8 @@ Object.assign(window, {
   // Season history
   exportSeasonArchive, loadHistoryFolder, loadHistoryFiles, deleteHistorySeason, renderHistory, historySort, historyGetData,
   viewHistorySeason, exitHistoricalView,
+  viewSeasonStandings, seasonViewerNav, renderSeasonViewer,
+  showTeamAnalysis, closeTeamAnalysis, teamAnalysisNav,
   // Game engine
   startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gStopAuto, gToggleHideAnimation, gToggleHideLiveRankings, gToggleProgressDisplay, gShowLineup, newMatchup, gSetDelay,
   playoffPlayNext, playoffAutoSeries, playoffAutoAll, playoffAutoRound,
