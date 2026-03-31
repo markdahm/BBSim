@@ -138,6 +138,9 @@ export function renderSeasonViewer() {
     return a.localeCompare(b);
   });
 
+  const playoffIds = new Set(data.playoffTeamIds || []);
+  const championId = data.champion?.teamId ?? null;
+
   const mkDivCard = divName => {
     const e = divMap.get(divName);
     if (!e) return '';
@@ -155,9 +158,13 @@ export function renderSeasonViewer() {
       const tColor = t.color || '#888';
       const tName = (t.name || `${t.city || ''} ${t.nickname || ''}`.trim());
       const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${tColor};margin-right:6px;vertical-align:middle;flex-shrink:0"></span>`;
+      const isChamp   = t.id === championId;
+      const isPlayoff = playoffIds.has(t.id);
+      const crown = isChamp ? `<span class="sv-crown" title="Champion">&#x1F451;</span>` : '';
+      const rowClass = isChamp ? ' sv-row-champ' : isPlayoff ? ' sv-row-playoff' : ' sv-row-missed';
       const teamIdx = svTeamList.length;
       svTeamList.push({ id: t.id, name: tName, color: tColor });
-      rows += `<tr style="cursor:pointer" onclick="showTeamAnalysis(${teamIdx})"><td class="team-cell">${dot}${tName}</td><td>${t.w}</td><td>${t.l}</td><td>${pct}</td><td class="gb-cell">${gb}</td></tr>`;
+      rows += `<tr class="sv-standings-row${rowClass}" style="cursor:pointer" onclick="showTeamAnalysis(${teamIdx})"><td class="team-cell">${dot}${tName}${crown}</td><td>${t.w}</td><td>${t.l}</td><td>${pct}</td><td class="gb-cell">${gb}</td></tr>`;
     });
     return `<div class="division-card">
       <div class="division-head">${divName}</div>

@@ -113,6 +113,13 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .standings-table td:not(:first-child) { text-align:center; font-family:'IBM Plex Mono',monospace; font-size:0.78rem; }
 .standings-table tr:last-child td { border-bottom:none; }
 .standings-table tr:hover td { background:#fafafa; cursor:pointer; }
+.sv-row-playoff td { background:rgba(37,99,235,0.06); }
+.sv-row-playoff:hover td { background:rgba(37,99,235,0.12); }
+.sv-row-champ td { background:rgba(234,179,8,0.12); }
+.sv-row-champ:hover td { background:rgba(234,179,8,0.22); }
+.sv-crown { margin-left:5px; font-size:0.85rem; vertical-align:middle; }
+.sv-row-missed td { color:var(--muted); }
+.sv-row-missed:hover td { background:#fafafa; }
 .team-cell { font-weight:500; display:flex; align-items:center; gap:6px; }
 .gb-cell { color:var(--muted); }
 
