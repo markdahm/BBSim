@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#6d2b2b">
+  <title>Winery Scheduler</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ── Top header ──────────────────────────────────────────────── -->
+  <header class="app-header">
+    <button class="header-back hidden" id="header-back" onclick="navBack()" aria-label="Back">
+      &#8592;
+    </button>
+    <span class="header-title" id="header-title">Winery Scheduler</span>
+    <div class="header-spacer"></div>
+  </header>
+
+  <!-- ── Pages ───────────────────────────────────────────────────── -->
+  <main class="app-main">
+
+    <!-- Calendar: week view -->
+    <div id="page-calendar" class="page active">
+      <div class="week-nav">
+        <button class="week-nav-btn" onclick="calPrevMonth()" aria-label="Previous month">&#8249;</button>
+        <span id="week-label" class="week-label"></span>
+        <button class="week-nav-btn" onclick="calNextMonth()" aria-label="Next month">&#8250;</button>
+      </div>
+      <div id="calendar-grid" class="calendar-grid"></div>
+      <div class="cal-footer">
+        <button class="btn-primary" onclick="runAutoSchedule()">Auto-Schedule Month</button>
+        <button class="btn-ghost"   onclick="confirmClearMonth()">Clear Auto</button>
+        <button class="btn-ghost btn-icon-text" onclick="showHeuristics()" title="View scheduling rules">&#9432; Rules</button>
+      </div>
+    </div>
+
+    <!-- Day detail -->
+    <div id="page-day" class="page">
+      <div id="day-date-heading" class="day-heading"></div>
+      <div id="day-content" class="day-content"></div>
+    </div>
+
+    <!-- Employees list -->
+    <div id="page-employees" class="page">
+      <div id="employees-list" class="employees-list"></div>
+      <button class="fab" onclick="showAddEmployeeModal()" aria-label="Add employee">+</button>
+    </div>
+
+    <!-- Settings -->
+    <div id="page-settings" class="page">
+      <div id="settings-content" class="settings-content"></div>
+    </div>
+
+  </main>
+
+  <!-- ── Bottom navigation ────────────────────────────────────────── -->
+  <nav class="bottom-nav" aria-label="Main navigation">
+    <button class="nav-tab active" data-page="calendar" onclick="nav('calendar')">
+      <span class="nav-icon">&#128197;</span>
+      <span class="nav-label">Calendar</span>
+    </button>
+    <button class="nav-tab" data-page="employees" onclick="nav('employees')">
+      <span class="nav-icon">&#128101;</span>
+      <span class="nav-label">Staff</span>
+    </button>
+    <button class="nav-tab" data-page="settings" onclick="nav('settings')">
+      <span class="nav-icon">&#9881;</span>
+      <span class="nav-label">Settings</span>
+    </button>
+  </nav>
+
+  <!-- ── Modal overlay ────────────────────────────────────────────── -->
+  <div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()"></div>
+
+  <!-- Add / Edit Employee -->
+  <div id="modal-add-employee" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-emp-title">Add Employee</span>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="emp-edit-id">
+      <div class="form-group">
+        <label class="form-label" for="emp-name">Name</label>
+        <input type="text" id="emp-name" class="form-input" placeholder="Full name" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="emp-position">Position</label>
+        <select id="emp-position" class="form-input form-select">
+          <option value="Manager">Manager</option>
+          <option value="Wine Pourer">Wine Pourer</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="emp-email">Email <span class="form-optional">(optional — must match Google Sheet name)</span></label>
+        <input type="email" id="emp-email" class="form-input" placeholder="jane@example.com" autocomplete="email">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost"   onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEmployee()">Save</button>
+    </div>
+  </div>
+
+  <!-- Add Staff to Shift (bottom sheet) -->
+  <div id="modal-add-staff" class="modal modal-bottom hidden" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-staff-title">Add Staff</span>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body" id="modal-staff-list"></div>
+  </div>
+
+  <!-- Add / Edit Event -->
+  <div id="modal-add-event" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <span class="modal-title">Special Event</span>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="event-edit-id">
+      <input type="hidden" id="event-date">
+      <div class="form-group">
+        <label class="form-label" for="event-label">Event Name</label>
+        <input type="text" id="event-label" class="form-input" placeholder="e.g. Wine Club Release">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="event-staff-needed">Staff Needed</label>
+        <input type="number" id="event-staff-needed" class="form-input" value="2" min="1" max="30">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="event-notes">Notes <span class="form-optional">(optional)</span></label>
+        <textarea id="event-notes" class="form-input" rows="2" placeholder="Details, timing, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost"   onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEvent()">Save</button>
+    </div>
+  </div>
+
+  <!-- Assign Staff to Event (bottom sheet) -->
+  <div id="modal-event-staff" class="modal modal-bottom hidden" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-event-staff-title">Assign Staff</span>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body" id="modal-event-staff-list"></div>
+  </div>
+
+  <!-- Scheduling Heuristics Reference -->
+  <div id="modal-heuristics" class="modal modal-heuristics hidden" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <span class="modal-title">Scheduling Rules &amp; Heuristics</span>
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">&#x2715;</button>
+    </div>
+    <div class="modal-body heuristics-body">
+
+      <p class="heuristics-intro">
+        The auto-scheduler uses the following rules in order. Understanding them helps
+        you predict its output and use manual overrides effectively.
+      </p>
+
+      <div class="h-section">
+        <div class="h-section-title">Availability</div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">1</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Availability Gating</div>
+            <div class="h-rule-desc">
+              An employee is never scheduled on a day they marked unavailable in the
+              Google Sheet. Only days are tracked — there is no per-shift availability.
+              If an employee has no sheet data at all, they are treated as available
+              every day (benefit of the doubt).
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">2</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Sheet Format</div>
+            <div class="h-rule-desc">
+              The Google Sheet has one row per employee and one column per date
+              (ISO format: <code>YYYY-MM-DD</code>). Any non-blank mark in a cell
+              means available — employees just mark days they <em>can</em> work and
+              leave the rest blank. Explicit "N", "NO", or "FALSE" also work as
+              unavailable markers.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-section">
+        <div class="h-section-title">Staffing Requirements</div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">3</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Manager Per Shift</div>
+            <div class="h-rule-desc">
+              Every shift (A and B) must have at least one Manager. If no Manager
+              is available for a shift, that shift is flagged with a warning badge
+              on the calendar and day detail view. The shift is still filled with
+              available Wine Pourers — it is not left empty.
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">4</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Target Staffing Level</div>
+            <div class="h-rule-desc">
+              Each shift is filled up to the "Target staff per shift" number
+              configured in Settings (default: 2). The scheduler does not exceed
+              this number unless you add staff manually.
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">5</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">One Assignment Per Day</div>
+            <div class="h-rule-desc">
+              An employee is assigned to at most one shift per day. Once placed on
+              Shift A, they are excluded from Shift B that same day, and vice versa.
+              This applies to both auto-assigned and manually-assigned staff.
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">6</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Shift Identity</div>
+            <div class="h-rule-desc">
+              Each employee can clearly see whether they are on
+              <strong>Shift A (11:30 AM – 5:00 PM)</strong> or
+              <strong>Shift B (12:30 PM – 6:00 PM)</strong> by viewing
+              the Day Detail screen. Shift assignments are shown on separate
+              labelled cards.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-section">
+        <div class="h-section-title">Fairness &amp; Distribution</div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">7</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Fairness Score</div>
+            <div class="h-rule-desc">
+              Employees are ranked by how many <em>days</em> they have worked in
+              the past four weeks. Those with fewer recent days get scheduled first.
+              Shift A and Shift B on the same day count as one day worked — the
+              specific shift does not affect the fairness score.
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">8</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Recency Weighting</div>
+            <div class="h-rule-desc">
+              Days worked in the most recent week of the lookback window count
+              <strong>3×</strong> more than days from earlier weeks. This prevents
+              an employee who just had a busy stretch from being immediately
+              over-scheduled again in the next run.
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">9</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Manager Priority Within a Shift</div>
+            <div class="h-rule-desc">
+              Among all available candidates for a shift, one Manager is always
+              seated first. Remaining slots are filled with Wine Pourers (sorted
+              by fairness score). If more slots remain after all Wine Pourers are
+              placed, additional Managers fill them.
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">10</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Random Tiebreaker</div>
+            <div class="h-rule-desc">
+              When two employees have identical fairness scores, a small random
+              factor determines who is picked first. This prevents the same person
+              from always being chosen when scores are tied (e.g. two new
+              employees with zero history).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-section">
+        <div class="h-section-title">Manual Overrides</div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">11</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Manual Override Protection</div>
+            <div class="h-rule-desc">
+              If a shift contains any manually-assigned staff member (marked with
+              a ✎ indicator), the auto-scheduler skips that shift entirely on the
+              next run. Manual assignments are never overwritten. Use
+              <strong>Clear Auto</strong> to reset only auto-assigned slots while
+              keeping all manual assignments intact.
+            </div>
+          </div>
+        </div>
+
+        <div class="h-rule">
+          <div class="h-rule-num">12</div>
+          <div class="h-rule-content">
+            <div class="h-rule-name">Manual Assignments and Fairness</div>
+            <div class="h-rule-desc">
+              Manually-assigned shifts count toward an employee's fairness score
+              in future scheduling runs, the same as auto-assigned shifts. Manually
+              placing someone does not give them an advantage in subsequent months.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

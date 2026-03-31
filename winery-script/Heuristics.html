@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    color: #1c1c1e;
+    margin: 0;
+    padding: 0 14px 24px;
+    line-height: 1.5;
+  }
+  h2 {
+    font-size: 14px;
+    font-weight: 700;
+    color: #6d2b2b;
+    margin: 18px 0 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    border-bottom: 1px solid #e5e5ea;
+    padding-bottom: 5px;
+  }
+  .intro {
+    font-size: 12px;
+    color: #888;
+    padding: 12px 0 6px;
+    border-bottom: 1px solid #e5e5ea;
+    margin-bottom: 4px;
+  }
+  .rule {
+    display: flex;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid #f0f0f0;
+    align-items: flex-start;
+  }
+  .rule:last-child { border-bottom: none; }
+  .num {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #f0eded;
+    color: #888;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+  }
+  .rule-name {
+    font-weight: 700;
+    font-size: 12.5px;
+    margin-bottom: 2px;
+  }
+  .rule-desc {
+    font-size: 12px;
+    color: #555;
+  }
+  code {
+    font-family: 'SF Mono', monospace;
+    font-size: 11px;
+    background: #f5f5f5;
+    border-radius: 3px;
+    padding: 1px 4px;
+  }
+  strong { color: #1c1c1e; }
+</style>
+</head>
+<body>
+
+<p class="intro">
+  Rules applied by the auto-scheduler in order. Understanding them
+  helps predict results and use manual edits effectively.
+</p>
+
+<h2>Availability</h2>
+
+<div class="rule">
+  <div class="num">1</div>
+  <div>
+    <div class="rule-name">Day-Level Availability Gating</div>
+    <div class="rule-desc">
+      Employees are never scheduled on days they marked unavailable in the
+      Availability tab. Only days matter — there is no per-shift availability.
+      Any non-blank mark in a cell means available; blank means unavailable.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">2</div>
+  <div>
+    <div class="rule-name">No Data = Available</div>
+    <div class="rule-desc">
+      If an employee has no row in the Availability tab at all, they are
+      treated as available every day (benefit of the doubt). Add them to
+      Availability to restrict their days.
+    </div>
+  </div>
+</div>
+
+<h2>Staffing Requirements</h2>
+
+<div class="rule">
+  <div class="num">3</div>
+  <div>
+    <div class="rule-name">Manager Per Shift</div>
+    <div class="rule-desc">
+      Every shift (A and B) must have at least one Manager. If no Manager
+      is available, that shift is highlighted <strong>orange</strong> as a warning.
+      The shift is still filled with available Wine Pourers — it is not left empty.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">4</div>
+  <div>
+    <div class="rule-name">Target Staffing Level</div>
+    <div class="rule-desc">
+      Each shift is filled up to the <strong>Target Staff Per Shift</strong>
+      value in Settings (default: 2). The scheduler never exceeds this number.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">5</div>
+  <div>
+    <div class="rule-name">One Assignment Per Day</div>
+    <div class="rule-desc">
+      Each employee is assigned to at most one shift per day. Once placed
+      on Shift A, they are excluded from Shift B the same day, and vice versa.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">6</div>
+  <div>
+    <div class="rule-name">Shift Identity</div>
+    <div class="rule-desc">
+      Employees can see whether they are on
+      <strong>Shift A (11:30 AM – 5:00 PM)</strong> or
+      <strong>Shift B (12:30 PM – 6:00 PM)</strong> in the Schedule tab.
+      Each shift has its own column with the time clearly labelled.
+    </div>
+  </div>
+</div>
+
+<h2>Fairness &amp; Distribution</h2>
+
+<div class="rule">
+  <div class="num">7</div>
+  <div>
+    <div class="rule-name">Fairness Score</div>
+    <div class="rule-desc">
+      Employees are ranked by days worked in the past four weeks.
+      Those with fewer recent days are scheduled first. Shift A and Shift B
+      on the same day count as <em>one day</em> — the specific shift does
+      not affect fairness.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">8</div>
+  <div>
+    <div class="rule-name">Recency Weighting</div>
+    <div class="rule-desc">
+      Days worked in the most recent 7 days count <strong>3×</strong> more
+      than earlier days. This prevents someone who just had a busy week from
+      being immediately over-scheduled again.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">9</div>
+  <div>
+    <div class="rule-name">Manager Priority Within a Shift</div>
+    <div class="rule-desc">
+      One Manager is always seated first within a shift. Remaining slots are
+      filled with Wine Pourers (sorted by fairness). If more slots remain after
+      all Wine Pourers are placed, additional Managers fill them.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">10</div>
+  <div>
+    <div class="rule-name">Random Tiebreaker</div>
+    <div class="rule-desc">
+      When two employees have identical fairness scores, a small random factor
+      decides who is picked. This prevents alphabetical or positional bias
+      among equally-eligible staff.
+    </div>
+  </div>
+</div>
+
+<h2>Manual Overrides</h2>
+
+<div class="rule">
+  <div class="num">11</div>
+  <div>
+    <div class="rule-name">Re-running the Scheduler</div>
+    <div class="rule-desc">
+      Running <strong>Auto-Schedule Month</strong> always generates a fresh
+      schedule for the whole month. Any manual edits you made to the Schedule
+      tab will be overwritten. Make manual tweaks after the auto-run, not before.
+    </div>
+  </div>
+</div>
+
+<div class="rule">
+  <div class="num">12</div>
+  <div>
+    <div class="rule-name">Manual Edits Count Toward Fairness</div>
+    <div class="rule-desc">
+      Edits you make to the Schedule tab after the auto-run are not tracked
+      in History automatically. If you frequently place the same person manually,
+      consider running the scheduler again so it can re-balance around them.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

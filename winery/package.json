@@ -1,0 +1,11 @@
+{
+  "name": "winery-scheduler",
+  "version": "1.0.0",
+  "description": "Mobile-first winery shift scheduling app",
+  "scripts": {
+    "dev": "browser-sync start --server --port 3002 --files '*.html, *.css, *.js, src/*.js' --no-notify"
+  },
+  "devDependencies": {
+    "browser-sync": "^3.0.3"
+  }
+}
