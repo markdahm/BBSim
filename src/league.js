@@ -1,4 +1,4 @@
-import { MLB_STRUCTURE, POSITIONS, EMOJIS, MLB, B_ARCHS, P_ARCHS } from './data.js';
+import { MLB_STRUCTURE, POSITIONS, EMOJIS, MLB, B_ARCHS, P_ARCHS, LINEUP_PROFILES, PITCHER_PROFILES } from './data.js';
 import { ri, rn, rand, cl, randomColor } from './utils.js';
 
 // ====================================================================
@@ -32,6 +32,7 @@ export function initLeague() {
           });
         }
       });
+      initAvgRoster();
       saveLeague();
       return;
     } catch(e) {}
@@ -72,6 +73,7 @@ export function generateLeague() {
       }
     }
   }
+  initAvgRoster();
   saveLeague();
 }
 
@@ -97,6 +99,77 @@ export function saveLeague() {
     const ind = document.getElementById('save-ind');
     if (ind) { ind.textContent = '⚠ Storage full — Export to save'; ind.className = 'save-indicator'; }
   }
+}
+
+// ====================================================================
+// AVERAGE ROSTER TEMPLATE
+// ====================================================================
+function makeDefaultAvgRoster() {
+  const batters = POSITIONS.map((pos, i) => {
+    const p = LINEUP_PROFILES[i];
+    return {
+      id: `avg-b${i}`, name: `Player ${i + 1}`,
+      pos, arch: p.label, type: 'batter',
+      num: i + 1, emoji: '⚾',
+      avg: p.avg, kPct: p.kPct, bbPct: p.bbPct, hrPct: p.hrPct,
+      sbRate: p.sbRate, sbPct: .73,
+      singlePct: MLB.single, doublePct: p.doublePct,
+      triplePct: p.triplePct, goPct: p.goPct, foPct: p.foPct,
+      career: { g:0, pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 },
+      seasons: [],
+    };
+  });
+  const pitchers = PITCHER_PROFILES.map((p, i) => ({
+    id: `avg-p${i}`, name: `Pitcher ${i + 1}`,
+    pos: p.pos, arch: p.label, type: 'pitcher',
+    num: i + 1, emoji: '⚾',
+    era: p.era, kPct: p.kPct, bbPct: p.bbPct, goD: p.goD,
+    career: { g:0, gs:0, cg:0, sho:0, ip:0, h:0, r:0, er:0, bb:0, k:0, w:0, l:0, sv:0, svo:0, hr:0, hbp:0, bf:0 },
+    seasons: [],
+  }));
+  return { id: 'avg', name: 'Average Roster', batters, pitchers };
+}
+
+function initAvgRoster() {
+  if (!LEAGUE.avgRoster) { LEAGUE.avgRoster = makeDefaultAvgRoster(); return; }
+  // Migration: append any pitcher slots added since the roster was first saved
+  const existing = LEAGUE.avgRoster.pitchers.length;
+  for (let i = existing; i < PITCHER_PROFILES.length; i++) {
+    const p = PITCHER_PROFILES[i];
+    LEAGUE.avgRoster.pitchers.push({
+      id: `avg-p${i}`, name: `Pitcher ${i + 1}`,
+      pos: p.pos, arch: p.label, type: 'pitcher',
+      num: i + 1, emoji: '⚾',
+      era: p.era, kPct: p.kPct, bbPct: p.bbPct, goD: p.goD,
+      career: { g:0, gs:0, cg:0, sho:0, ip:0, h:0, r:0, er:0, bb:0, k:0, w:0, l:0, sv:0, svo:0, hr:0, hbp:0, bf:0 },
+      seasons: [],
+    });
+  }
+}
+
+export function applyAvgRosterToLeague() {
+  const tmpl = LEAGUE.avgRoster;
+  if (!tmpl) return;
+  for (const team of LEAGUE.teams) {
+    const n = Math.min(team.batters.length, tmpl.batters.length);
+    for (let i = 0; i < n; i++) {
+      const src = tmpl.batters[i];
+      const b   = team.batters[i];
+      b.avg = src.avg; b.kPct = src.kPct; b.bbPct = src.bbPct;
+      b.hrPct = src.hrPct; b.sbRate = src.sbRate; b.sbPct = src.sbPct;
+      b.singlePct = src.singlePct; b.doublePct = src.doublePct;
+      b.triplePct = src.triplePct; b.goPct = src.goPct; b.foPct = src.foPct;
+      b.arch = src.arch;
+    }
+    const m = Math.min(team.pitchers.length, tmpl.pitchers.length);
+    for (let i = 0; i < m; i++) {
+      const src = tmpl.pitchers[i];
+      const p   = team.pitchers[i];
+      p.era = src.era; p.kPct = src.kPct; p.bbPct = src.bbPct;
+      p.goD = src.goD; p.arch = src.arch;
+    }
+  }
+  saveLeague();
 }
 
 // ====================================================================

@@ -16,9 +16,10 @@ import {
   openCard, openCardById, closeCard, closeCardDirect, prevCard, nextCard,
   updatePlayerName, updateRating, updateRatingFromBar, setFilter, setTeamFilter, setStatFilter, removeStatFilter, clearStatFilter, doSort, renderPlayersTable,
   schedNewSeason, schedDeleteAll, schedRecycle, schedGenerate, schedClear, schedCancel,
-  schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
+  schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter, navToTeamSchedule,
   schedDragStart, schedDrop, schedSetCount, schedRemoveRow, schedSetIntraCount,
   generatePlayoffs, renderPlayoffs, resetPlayoffs,
+  openAvgRoster, closeAvgRoster, avgRosterSetTab, doResetTeamStats,
 } from './src/views.js';
 import { startGame, simSetMode, startScheduleGame, schedPlayGame, gNextGame, gSinglePitch, gPitch, gAuto, gAutoGame, gAutoMulti, gAutoAll, gStopAuto, gToggleHideAnimation, gToggleHideLiveRankings, gToggleProgressDisplay, gShowLineup, newMatchup, gSetDelay, playoffPlayNext, playoffAutoSeries, playoffAutoAll, playoffAutoRound } from './src/game.js';
 
@@ -36,9 +37,10 @@ Object.assign(window, {
   updatePlayerName, updateRating, updateRatingFromBar,
   setFilter, setTeamFilter, setStatFilter, removeStatFilter, clearStatFilter, doSort, renderPlayersTable,
   schedNewSeason, schedDeleteAll, schedRecycle, schedGenerate, schedClear, schedCancel,
-  schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter,
+  schedLoadOpen, schedLoadPick, schedDeleteSaved, schedSetTeamFilter, navToTeamSchedule,
   schedDragStart, schedDrop, schedSetCount, schedRemoveRow, schedSetIntraCount,
   generatePlayoffs, renderPlayoffs, resetPlayoffs,
+  openAvgRoster, closeAvgRoster, avgRosterSetTab, doResetTeamStats,
   // Roster import / export
   importRosters, exportLeague,
   // Season history

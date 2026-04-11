@@ -17,9 +17,9 @@ let gLineupView = 0;
 let simMode = 'schedule';    // 'expo' | 'schedule' | 'playoffs'
 let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled game
 let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
-let hideAnimation = false;   // when true, skip all per-pitch DOM updates
-let hideLiveRankings = false; // when true, suppress the live standings panel in hide-animation mode
-let progressAsPercent = false; // when true, show schedule progress as % instead of boxes
+let hideAnimation    = localStorage.getItem('dlg-hide-anim')     === '1';
+let hideLiveRankings = localStorage.getItem('dlg-hide-rankings') === '1';
+let progressAsPercent = localStorage.getItem('dlg-prog-pct')    === '1';
 let _prevStandingsSnap = null; // division → teamId[] sorted by rank, taken before each game's W/L update
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
 let playoffIsAutoMode = false;       // true when game was started by auto-play (not single-play)
@@ -959,15 +959,15 @@ function checkFatigueAndSub(team, force = false) {
       if (!force && Math.random() > pullProb) return;
     }
   }
-  const avail = (p, i) => i !== team.activePitcher && getFatigue(p) < 1;
-  // 1. Prefer RP
-  let eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i) && p.pos==='RP');
-  // 2. Any non-SP, non-CL reliever
-  if (eligible.length === 0)
-    eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i) && p.pos!=='SP' && p.pos!=='CL' && p.pos!=='P');
-  // 3. Last resort — anyone available (including CL)
-  if (eligible.length === 0)
-    eligible = team.pitchers.map((p,i)=>({p,i})).filter(({p,i})=>avail(p,i));
+  // Single pass: bucket by priority, pick highest-priority non-empty bucket
+  const rp = [], mid = [], last = [];
+  team.pitchers.forEach((p, i) => {
+    if (i === team.activePitcher || getFatigue(p) >= 1) return;
+    if (p.pos === 'RP')                                            rp.push({p, i});
+    else if (p.pos !== 'SP' && p.pos !== 'CL' && p.pos !== 'P')  mid.push({p, i});
+    else                                                           last.push({p, i});
+  });
+  const eligible = rp.length ? rp : mid.length ? mid : last;
   if (eligible.length === 0) return;
   eligible.sort((a,b) => (a.p.career.g || 0) - (b.p.career.g || 0));
   const next = eligible[0].i;
@@ -1286,15 +1286,21 @@ export function gAutoGame() {
 // Returns the index of the next game to auto-play.
 // When a schedule filter is active, filtered games are prioritised;
 // once all filtered games are played it falls back to any unplayed game.
+function buildTeamNameMap() {
+  const m = new Map();
+  for (const t of LEAGUE.teams) m.set(t.id, t.name.toLowerCase());
+  return m;
+}
+
+function matchesFilter(g, tf, nameMap) {
+  return nameMap.get(g.awayId) === tf || nameMap.get(g.homeId) === tf;
+}
+
 function nextSchedIdx(sched) {
   const tf = (LEAGUE._schedFilter || '').toLowerCase();
   if (tf) {
-    const fi = sched.findIndex(g => {
-      if (g.played) return false;
-      const away = LEAGUE.teams.find(t => t.id === g.awayId);
-      const home = LEAGUE.teams.find(t => t.id === g.homeId);
-      return (away && away.name.toLowerCase() === tf) || (home && home.name.toLowerCase() === tf);
-    });
+    const nameMap = buildTeamNameMap();
+    const fi = sched.findIndex(g => !g.played && matchesFilter(g, tf, nameMap));
     if (fi !== -1) return fi;
   }
   return sched.findIndex(g => !g.played);
@@ -1307,12 +1313,8 @@ export function gAutoMulti() {
   const tf = (LEAGUE._schedFilter || '').toLowerCase();
   let msg = `How many games to auto-play? (${unplayed} remaining)`;
   if (tf) {
-    const fc = sched.filter(g => {
-      if (g.played) return false;
-      const away = LEAGUE.teams.find(t => t.id === g.awayId);
-      const home = LEAGUE.teams.find(t => t.id === g.homeId);
-      return (away && away.name.toLowerCase() === tf) || (home && home.name.toLowerCase() === tf);
-    }).length;
+    const nameMap = buildTeamNameMap();
+    const fc = sched.filter(g => !g.played && matchesFilter(g, tf, nameMap)).length;
     if (fc > 0) msg = `How many games to auto-play? (${fc} filtered first, ${unplayed} total remaining)`;
   }
   const input = prompt(msg);
@@ -1356,18 +1358,21 @@ function autoMultiNext() {
 
 export function gToggleHideAnimation() {
   hideAnimation = !hideAnimation;
+  localStorage.setItem('dlg-hide-anim', hideAnimation ? '1' : '0');
   const el = document.getElementById('btn-hide-anim');
   if (el) el.classList.toggle('on', hideAnimation);
 }
 
 export function gToggleHideLiveRankings() {
   hideLiveRankings = !hideLiveRankings;
+  localStorage.setItem('dlg-hide-rankings', hideLiveRankings ? '1' : '0');
   const el = document.getElementById('btn-hide-rankings');
   if (el) el.classList.toggle('on', hideLiveRankings);
 }
 
 export function gToggleProgressDisplay() {
   progressAsPercent = !progressAsPercent;
+  localStorage.setItem('dlg-prog-pct', progressAsPercent ? '1' : '0');
   const el = document.getElementById('btn-progress-pct');
   if (el) el.classList.toggle('on', progressAsPercent);
   updateSchedProgressStrip();
@@ -1610,7 +1615,6 @@ export function playoffPlayNext(seriesIdx) {
   saveLeague();
   const gameNum = series.games.length + 1;
   const { homeId, awayId } = getGameHomeAway(series, gameNum);
-  hideAnimation = false;
   simMode = 'playoffs';
   window.nav('simulate');
   startGame(awayId, homeId);

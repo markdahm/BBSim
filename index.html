@@ -50,6 +50,7 @@
             <label class="dropdown-item">Import Roster
               <input type="file" accept=".txt,.csv,.tsv,.json" onchange="importRosters(this)" style="display:none">
             </label>
+            <button class="dropdown-item" onclick="openAvgRoster()">Average Roster</button>
           </div>
         </details>
       </div>
@@ -171,6 +172,27 @@
   <div class="card-wrap">
     <div class="card-close" onclick="closeCardDirect()">✕</div>
     <div class="baseball-card" id="baseball-card"></div>
+  </div>
+</div>
+
+<!-- AVERAGE ROSTER TEMPLATE OVERLAY -->
+<div id="avg-roster-overlay" onclick="closeAvgRoster()" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:200;display:none;align-items:center;justify-content:center;padding:20px">
+  <div onclick="event.stopPropagation()" style="background:var(--panel);border-radius:6px;box-shadow:0 20px 60px rgba(0,0,0,0.4);width:100%;max-width:860px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:16px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div>
+        <div style="font-family:'Oswald',sans-serif;font-size:1.2rem;font-weight:600;letter-spacing:1px">Average Roster Template</div>
+        <div style="margin-top:4px;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;color:var(--muted)">Define stat profiles · push to all teams with Reset Team Stats</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;gap:0;border:1px solid var(--line);border-radius:3px;overflow:hidden">
+          <button id="avg-tab-bat" onclick="avgRosterSetTab('bat')" style="padding:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;border:none;cursor:pointer">Batters</button>
+          <button id="avg-tab-pit" onclick="avgRosterSetTab('pit')" style="padding:5px 14px;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;border:none;cursor:pointer">Pitchers</button>
+        </div>
+        <button onclick="doResetTeamStats()" style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;padding:6px 14px;background:var(--gold);color:#fff;border:none;border-radius:3px;cursor:pointer">Reset Team Stats</button>
+        <button onclick="closeAvgRoster()" style="background:var(--panel);border:2px solid var(--ink);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center">✕</button>
+      </div>
+    </div>
+    <div id="avg-roster-body" style="overflow:auto;padding:16px 24px 24px"></div>
   </div>
 </div>
 
