@@ -19,6 +19,8 @@ let schedGameIdx = -1;       // index into LEAGUE.schedule for current scheduled
 let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
 let hideAnimation    = localStorage.getItem('dlg-hide-anim')     === '1';
 let hideLiveRankings = localStorage.getItem('dlg-hide-rankings') === '1';
+// Playoffs always use the full animated UI regardless of the hide-animation toggle
+const effHideAnim = () => hideAnimation && simMode !== 'playoffs';
 let progressAsPercent = localStorage.getItem('dlg-prog-pct')    === '1';
 let _prevStandingsSnap = null; // division → teamId[] sorted by rank, taken before each game's W/L update
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
@@ -52,6 +54,10 @@ export function renderSimulate() {
         </div>`;
       window._mpLogoFor = logoFor;
       if (LEAGUE.teams.length >= 2) { document.getElementById('sel-home').selectedIndex = 1; document.getElementById('logo-home').innerHTML = logoFor(LEAGUE.teams[1].id); }
+
+    } else if (simMode === 'playoffs' && LEAGUE.playoffs?.active) {
+      // No game running but playoffs are active — redirect to bracket
+      cont.innerHTML = `<div class="matchup-picker"><div style="padding:20px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">Use the Playoffs page to start the next game.</div><button class="btn primary" onclick="nav('playoffs')">← Back to Playoffs</button></div>`;
 
     } else {
       // Schedule mode
@@ -335,7 +341,7 @@ function renderLiveStandings() {
 }
 
 function renderGameUI() {
-  if (hideAnimation) {
+  if (effHideAnim()) {
     document.getElementById('sim-container').innerHTML = `<div class="matchup-picker">${schedProgressStrip()}${hideLiveRankings ? '' : renderLiveStandings()}</div>`;
     return;
   }
@@ -435,7 +441,7 @@ function renderGameUI() {
 }
 
 // ── GAME ENGINE ──
-function gRenderAll() { if (hideAnimation) return; gRenderSB(); gRenderStatus(); gRenderPlayers(); gRenderLineup(); gRenderPitchers(); gRenderInning(); gRenderFeed(); }
+function gRenderAll() { if (effHideAnim()) return; gRenderSB(); gRenderStatus(); gRenderPlayers(); gRenderLineup(); gRenderPitchers(); gRenderInning(); gRenderFeed(); }
 
 function gRenderFeed() {
   const el = document.getElementById('g-sb-feed');
@@ -569,7 +575,7 @@ function flashMsg(text, times, onMs, offMs, holdMs) {
 }
 
 function showScoreboardMsg(text, ms = 1800, color = null) {
-  if (hideAnimation) return;
+  if (effHideAnim()) return;
   const el = document.getElementById('g-sb-msg');
   const tx = document.getElementById('g-sb-msg-text');
   if (!el || !tx) return;
@@ -597,7 +603,7 @@ export function gPitch() {
 }
 
 function simPitch() {
-  if (!hideAnimation) { const sbMsg = document.getElementById('g-sb-msg'); if (sbMsg) sbMsg.style.display = 'none'; }
+  if (!effHideAnim()) { const sbMsg = document.getElementById('g-sb-msg'); if (sbMsg) sbMsg.style.display = 'none'; }
   if (msgT) { clearTimeout(msgT); msgT = null; }
   if (G._feedInning !== G.inning || G._feedHalf !== G.half) {
     G.eventFeed = [];
@@ -825,7 +831,7 @@ function tryAutoSteal(bi) {
 
 let hpQueue = 0, hpBusy = false;
 function flashHome() {
-  if (hideAnimation) return;
+  if (effHideAnim()) return;
   hpQueue++;
   if (hpBusy) return;
   const step = () => {
@@ -1007,7 +1013,7 @@ function endGame() {
   const w = awayWon ? G.away.name : homeWon ? G.home.name : 'Tie';
 
   // Snapshot standings before updating W/L so live standings panel can show rank changes
-  if (hideAnimation) takeStandingsSnapshot();
+  if (effHideAnim()) takeStandingsSnapshot();
 
   // Update W/L records (regular season only — playoffs don't affect season standings)
   if (simMode !== 'playoffs') {
@@ -1166,7 +1172,7 @@ function endGame() {
   // Multi-game auto mode — skip overlay, chain to next game
   if (autoMultiRemaining > 0) { autoMultiNext(); return; }
 
-  if (hideAnimation) { renderSimulate(); return; }
+  if (effHideAnim()) { renderSimulate(); return; }
 
   const el = document.getElementById('g-over'); if (el) el.style.display = 'block';
   setText('g-over-w', w === 'Tie' ? 'Final — Tie' : `${w} Win!`);
@@ -1446,7 +1452,7 @@ function gOrd(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : 
 const LOG_ICON_COLOR = { '1B':'#7ecf7e','2B':'#7ecf7e','3B':'#7ecf7e','HR':'#4ab3ff','BB':'#ffcc00','HBP':'#ffcc00','SF':'#ffcc00','R':'#4ab3ff','K':'#cc1111','GO':'#cc1111','FO':'#cc1111','LO':'#cc1111','DP':'#cc1111','E':'#ff8c00' };
 
 function addLog(t, txt, cls, icon = '') {
-  if (hideAnimation) return;
+  if (effHideAnim()) return;
   const l = document.getElementById('g-log'); if (!l) return;
   const e = document.createElement('div'); e.className = 'lr';
   const iHtml = icon ? `<span class="li" style="color:${LOG_ICON_COLOR[icon]||'#aaa'}">${icon}</span>` : '<span class="li"></span>';
@@ -1455,7 +1461,7 @@ function addLog(t, txt, cls, icon = '') {
 }
 
 function addDelimiter(style) {
-  if (hideAnimation) return;
+  if (effHideAnim()) return;
   const l = document.getElementById('g-log'); if (!l) return;
   const e = document.createElement('div'); e.className = `log-delimiter log-delimiter-${style}`;
   l.insertBefore(e, l.firstChild);
@@ -1616,8 +1622,8 @@ export function playoffPlayNext(seriesIdx) {
   const gameNum = series.games.length + 1;
   const { homeId, awayId } = getGameHomeAway(series, gameNum);
   simMode = 'playoffs';
-  window.nav('simulate');
   startGame(awayId, homeId);
+  window.nav('simulate');
 }
 
 export function playoffAutoSeries(seriesIdx) {

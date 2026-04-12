@@ -1,7 +1,7 @@
 import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl } from './utils.js';
 import { LEAGUE, saveLeague, allBatters, allPitchers, applyAvgRosterToLeague } from './league.js';
 import { MLB } from './data.js';
-import { renderSimulate, stopAfterCurrentGame } from './game.js';
+import { renderSimulate, stopAfterCurrentGame, simSetMode } from './game.js';
 import { exportSeasonArchive, renderHistory, getSeasonViewerEntry, getSeasonViewerInfo, setSeasonViewerPos, stepSeasonViewer, getAllHistorySeasons } from './history.js';
 
 // ====================================================================
@@ -1827,6 +1827,7 @@ export function schedRecycle(afterPage) {
   LEAGUE.gamesPlayed = 0;
   LEAGUE.playoffs = null;
   LEAGUE._schedFilter = '';
+  simSetMode('schedule');
   saveLeague();
   if (afterPage) nav(afterPage);
   else renderSchedule();
