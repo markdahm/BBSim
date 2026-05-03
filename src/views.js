@@ -230,7 +230,11 @@ function _renderTeamAnalysis() {
       ? data.playoffTeamIds.includes(teamId)
       : (data.champion?.teamId === teamId || data.runnerUp?.teamId === teamId);
     const isChampion = data.champion?.teamId === teamId;
-    if (pos > 0) results.push({ seq: seqMap.get(filename) ?? '?', w: thisTeam.w, l: thisTeam.l, pos, madePlayoffs, isChampion });
+    const isRunnerUp = data.runnerUp?.teamId === teamId;
+    // Use stored round; fall back to inferring from champion/runnerUp for old archives
+    const round = data.playoffRound?.[teamId]
+      ?? (isChampion ? 'champion' : isRunnerUp ? 'WS' : null);
+    if (pos > 0) results.push({ seq: seqMap.get(filename) ?? '?', w: thisTeam.w, l: thisTeam.l, pos, madePlayoffs, isChampion, round });
   }
   results.sort((a, b) => a.seq - b.seq);
 
@@ -250,16 +254,31 @@ function _renderTeamAnalysis() {
     </tr>`;
   }).join('');
 
+  const roundBadgeStyle = {
+    WS: 'background:var(--gold);color:#fff;',
+    R3: 'background:#2563eb;color:#fff;',
+    R2: 'background:#0891b2;color:#fff;',
+    R1: 'background:#78716c;color:#fff;',
+  };
+  const roundRowStyle = {
+    champion: 'background:rgba(184,134,11,0.12);border-left:3px solid var(--gold);',
+    WS:       'background:rgba(184,134,11,0.08);border-left:3px solid var(--gold);',
+    R3:       'background:rgba(37,99,235,0.07);border-left:3px solid #2563eb;',
+    R2:       'background:rgba(8,145,178,0.07);border-left:3px solid #0891b2;',
+    R1:       'background:rgba(120,113,108,0.07);border-left:3px solid #78716c;',
+  };
+
   const detailRows = results.map(r => {
-    const playoffStyle = r.madePlayoffs
-      ? 'background:rgba(184,134,11,0.12);border-left:3px solid var(--gold);'
-      : 'border-left:3px solid transparent;';
-    const badge = r.isChampion
-      ? ' <span style="font-size:0.85rem;line-height:1">👑</span>'
-      : r.madePlayoffs
-        ? ' <span style="font-size:0.55rem;font-weight:700;color:var(--gold);letter-spacing:0.5px">PO</span>'
-        : '';
-    return `<tr style="${playoffStyle}">
+    const rowStyle = roundRowStyle[r.round] ?? (r.madePlayoffs ? roundRowStyle.R1 : 'border-left:3px solid transparent;');
+    let badge = '';
+    if (r.round === 'champion') {
+      badge = ' <span style="font-size:0.85rem;line-height:1">👑</span>';
+    } else if (r.round && roundBadgeStyle[r.round]) {
+      badge = ` <span style="font-size:0.52rem;font-weight:700;letter-spacing:0.5px;padding:1px 3px;border-radius:2px;${roundBadgeStyle[r.round]}">${r.round}</span>`;
+    } else if (r.madePlayoffs) {
+      badge = ' <span style="font-size:0.55rem;font-weight:700;color:var(--gold);letter-spacing:0.5px">PO</span>';
+    }
+    return `<tr style="${rowStyle}">
       <td style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;font-weight:600;padding:5px 10px 5px 6px;text-align:center">${r.seq}${badge}</td>
       <td style="padding:5px 10px;text-align:center">${r.w}</td>
       <td style="padding:5px 10px;text-align:center">${r.l}</td>
@@ -311,8 +330,9 @@ export function closeTeamAnalysis() {
 // ====================================================================
 export function renderHome() {
   document.getElementById('league-title').textContent = LEAGUE.name;
-  document.getElementById('league-sub').textContent = `${LEAGUE.season} Season · 30 Teams`;
-  document.getElementById('season-display').textContent = LEAGUE.season;
+  const seasonDisplay = LEAGUE.seasonName || LEAGUE.season;
+  document.getElementById('league-sub').textContent = `${seasonDisplay} Season · 30 Teams`;
+  document.getElementById('season-display').textContent = seasonDisplay;
 
   // Standings by division — two columns (AL | NL), fixed East→Central→West order
   const cont = document.getElementById('standings-container');
@@ -1526,6 +1546,7 @@ export function advanceSeason() {
     t.w = 0; t.l = 0; t.runsFor = 0; t.runsAgainst = 0;
   });
   LEAGUE.season++;
+  LEAGUE.seasonName = null;
   LEAGUE.gamesPlayed = 0;
   LEAGUE._schedFilter = '';
   saveLeague();
@@ -2008,6 +2029,33 @@ export function saveLeagueName() {
 export function cancelLeagueName(original) {
   const titleEl = document.getElementById('league-title');
   if (titleEl) titleEl.textContent = original;
+}
+
+export function editSeasonName() {
+  const el = document.getElementById('season-display');
+  if (!el) return;
+  const current = LEAGUE.seasonName || String(LEAGUE.season);
+  el.innerHTML = `<input id="season-name-input" value="${current}"
+    style="font-family:'Playfair Display',serif;font-size:1rem;font-weight:700;color:#e0d8c8;background:transparent;border:none;border-bottom:1px solid #888;outline:none;width:130px;padding:1px 0;"
+    onkeydown="if(event.key==='Enter')saveSeasonName();if(event.key==='Escape')cancelSeasonName()"
+    onblur="saveSeasonName()">`;
+  const input = document.getElementById('season-name-input');
+  input.focus();
+  input.select();
+}
+
+export function saveSeasonName() {
+  const input = document.getElementById('season-name-input');
+  if (!input) return;
+  const val = input.value.trim();
+  LEAGUE.seasonName = val && val !== String(LEAGUE.season) ? val : null;
+  saveLeague();
+  document.getElementById('season-display').textContent = LEAGUE.seasonName || LEAGUE.season;
+}
+
+export function cancelSeasonName() {
+  const el = document.getElementById('season-display');
+  if (el) el.textContent = LEAGUE.seasonName || LEAGUE.season;
 }
 
 // ====================================================================

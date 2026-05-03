@@ -12,35 +12,15 @@ let sortDir = -1;          // -1 = desc (newest first)
 let seasonViewerList = []; // original historySeasons indices in current sort order
 let seasonViewerPos  = 0;
 
-// ====================================================================
-// SEASON SCORE  (0–100, z-score composite across all teams in archive)
-// ====================================================================
-function computeSeasonScores(archiveData) {
-  const teams = archiveData.teams;
-  if (!Array.isArray(teams) || teams.length < 2) return {};
+// Cross-season scores: keyed by `${historySeasons index}_${teamId}`
+let _crossSeasonScores = {};
 
-  // Derive per-team stat values
-  const raw = teams.map(t => {
-    const totalHR = t.batters.reduce((s, b) => s + (b.career.hr || 0), 0);
-    const totalH  = t.batters.reduce((s, b) => s + (b.career.h  || 0), 0);
-    const totalAB = t.batters.reduce((s, b) => s + (b.career.ab || 0), 0);
-    const totalIP = t.pitchers.reduce((s, p) => s + (p.career.ip || 0), 0);
-    const totalER = t.pitchers.reduce((s, p) => s + (p.career.er || 0), 0);
-    const totalBB = t.pitchers.reduce((s, p) => s + (p.career.bb || 0), 0);
-    const totalHA = t.pitchers.reduce((s, p) => s + (p.career.h  || 0), 0);
-    const games   = (t.w || 0) + (t.l || 0);
-    return {
-      id:      t.id,
-      winPct:  games > 0 ? t.w / games : 0.5,
-      runDiff: games > 0 ? ((t.runsFor || 0) - (t.runsAgainst || 0)) / games : 0,
-      era:     totalIP > 0 ? (totalER / totalIP) * 9 : 4.50,
-      whip:    totalIP > 0 ? (totalBB + totalHA) / totalIP : 1.30,
-      avg:     totalAB > 0 ? totalH / totalAB : 0.250,
-      hr:      games > 0 ? totalHR / games : 0,
-    };
-  });
-
-  // Stat config: key, weight, true = higher is better
+// ====================================================================
+// SEASON SCORE  (0–100, z-score composite across ALL loaded seasons)
+// ====================================================================
+// Scores are keyed by `${historySeasons index}_${teamId}` so teams from
+// different seasons are compared on a single cross-archive scale.
+function _recomputeCrossSeasonScores() {
   const cfg = [
     { k: 'winPct',  w: 0.30, hi: true  },
     { k: 'runDiff', w: 0.20, hi: true  },
@@ -50,7 +30,38 @@ function computeSeasonScores(archiveData) {
     { k: 'hr',      w: 0.05, hi: true  },
   ];
 
-  // Mean + stddev for each stat
+  // Pool every team from every loaded season
+  const raw = [];
+  historySeasons.forEach((entry, hsIdx) => {
+    const teams = entry.data.teams;
+    if (!Array.isArray(teams)) return;
+    teams.forEach(t => {
+      const totalHR = t.batters.reduce((s, b) => s + (b.career.hr || 0), 0);
+      const totalH  = t.batters.reduce((s, b) => s + (b.career.h  || 0), 0);
+      const totalAB = t.batters.reduce((s, b) => s + (b.career.ab || 0), 0);
+      const totalIP = t.pitchers.reduce((s, p) => s + (p.career.ip || 0), 0);
+      const totalER = t.pitchers.reduce((s, p) => s + (p.career.er || 0), 0);
+      const totalBB = t.pitchers.reduce((s, p) => s + (p.career.bb || 0), 0);
+      const totalHA = t.pitchers.reduce((s, p) => s + (p.career.h  || 0), 0);
+      const games   = (t.w || 0) + (t.l || 0);
+      raw.push({
+        key:     `${hsIdx}_${t.id}`,
+        winPct:  games > 0 ? t.w / games : 0.5,
+        runDiff: games > 0 ? ((t.runsFor || 0) - (t.runsAgainst || 0)) / games : 0,
+        era:     totalIP > 0 ? (totalER / totalIP) * 9 : 4.50,
+        whip:    totalIP > 0 ? (totalBB + totalHA) / totalIP : 1.30,
+        avg:     totalAB > 0 ? totalH / totalAB : 0.250,
+        hr:      games > 0 ? totalHR / games : 0,
+      });
+    });
+  });
+
+  if (raw.length < 2) {
+    _crossSeasonScores = {};
+    raw.forEach(r => { _crossSeasonScores[r.key] = 50; });
+    return;
+  }
+
   const dist = {};
   for (const { k } of cfg) {
     const vals = raw.map(r => r[k]);
@@ -59,22 +70,21 @@ function computeSeasonScores(archiveData) {
     dist[k] = { mean, sd };
   }
 
-  // Weighted composite z-score per team
   const composites = raw.map(r => {
     const z = cfg.reduce((sum, { k, w, hi }) => {
       const zk = (r[k] - dist[k].mean) / dist[k].sd;
       return sum + w * (hi ? zk : -zk);
     }, 0);
-    return { id: r.id, z };
+    return { key: r.key, z };
   });
 
-  // Normalise min→0, max→100
   const zVals = composites.map(c => c.z);
   const zMin  = Math.min(...zVals), zMax = Math.max(...zVals);
   const range = zMax - zMin || 1;
-  const scores = {};
-  composites.forEach(c => { scores[c.id] = Math.round(((c.z - zMin) / range) * 100); });
-  return scores;
+  _crossSeasonScores = {};
+  composites.forEach(c => {
+    _crossSeasonScores[c.key] = Math.round(((c.z - zMin) / range) * 100);
+  });
 }
 
 function scoreColor(s) {
@@ -139,6 +149,10 @@ export function buildSeasonArchive() {
           city: team.city,
           nickname: team.nickname,
           color: team.color || '#111',
+          seasonW: team.w || 0,
+          seasonL: team.l || 0,
+          seasonRunsFor: team.runsFor || 0,
+          seasonRunsAgainst: team.runsAgainst || 0,
           playoffWins: countPlayoffWins(teamId),
           playoffLosses: countPlayoffLosses(teamId),
           playoffRunsFor: countPlayoffRuns(teamId, true),
@@ -189,6 +203,16 @@ export function buildSeasonArchive() {
     if (s.lowerSeedId  != null) playoffIds.add(s.lowerSeedId);
   }
 
+  // Map each team to the furthest round they reached
+  const roundLabel = { wildCard: 'R1', divSeries: 'R2', champSeries: 'R3', worldSeries: 'WS' };
+  const playoffRound = {};
+  for (const s of (LEAGUE.playoffs?.series || [])) {
+    if (s.winner == null) continue;
+    const loserId = s.winner === s.higherSeedId ? s.lowerSeedId : s.higherSeedId;
+    if (loserId != null) playoffRound[loserId] = roundLabel[s.round] ?? s.round;
+    if (s.round === 'worldSeries') playoffRound[s.winner] = 'champion';
+  }
+
   return {
     type: 'bbsim-season-archive',
     leagueName: LEAGUE.name,
@@ -197,6 +221,7 @@ export function buildSeasonArchive() {
     champion,
     runnerUp,
     playoffTeamIds: [...playoffIds],
+    playoffRound,
     teams,
   };
 }
@@ -332,6 +357,12 @@ export function stepSeasonViewer(dir) {
 // ====================================================================
 // SORT
 // ====================================================================
+// Fallback for old archives that stored only playoff stats on champion/runnerUp
+function _teamStat(archiveData, teamId, field) {
+  const t = (archiveData.teams || []).find(t => t.id === teamId);
+  return t ? (t[field] ?? null) : null;
+}
+
 export function historySort(col) {
   if (sortCol === col) {
     sortDir = -sortDir;
@@ -351,21 +382,21 @@ function getSortVal(entry, col) {
     case 'season':      return (entry.filename || '').toLowerCase();
     case 'league':      return (d.leagueName || '').toLowerCase();
     case 'champ':       return c ? c.teamName.toLowerCase() : '';
-    case 'cScore':      return c ? (computeSeasonScores(d)[c.teamId] ?? -1) : -1;
-    case 'cWins':       return c ? c.playoffWins : -1;
-    case 'cLosses':     return c ? (c.playoffLosses ?? -1) : -1;
-    case 'cRF':         return c ? (c.playoffRunsFor ?? -1) : -1;
-    case 'cRA':         return c ? (c.playoffRunsAgainst ?? -1) : -1;
+    case 'cScore':      return c ? (_crossSeasonScores[`${historySeasons.indexOf(entry)}_${c.teamId}`] ?? -1) : -1;
+    case 'cWins':       return c ? (c.seasonW ?? _teamStat(d, c.teamId, 'w') ?? -1) : -1;
+    case 'cLosses':     return c ? (c.seasonL ?? _teamStat(d, c.teamId, 'l') ?? -1) : -1;
+    case 'cRF':         return c ? (c.seasonRunsFor ?? _teamStat(d, c.teamId, 'runsFor') ?? -1) : -1;
+    case 'cRA':         return c ? (c.seasonRunsAgainst ?? _teamStat(d, c.teamId, 'runsAgainst') ?? -1) : -1;
     case 'cHR':         return c ? c.teamHR : -1;
     case 'cAVG':        return c ? c.battingAvg : -1;
     case 'cERA':        return c ? c.ERA : 99;
     case 'cWHIP':       return c ? c.WHIP : 99;
     case 'ru':          return r ? r.teamName.toLowerCase() : '';
-    case 'ruScore':     return r ? (computeSeasonScores(d)[r.teamId] ?? -1) : -1;
-    case 'ruWins':      return r ? r.playoffWins : -1;
-    case 'ruLosses':    return r ? (r.playoffLosses ?? -1) : -1;
-    case 'ruRF':        return r ? (r.playoffRunsFor ?? -1) : -1;
-    case 'ruRA':        return r ? (r.playoffRunsAgainst ?? -1) : -1;
+    case 'ruScore':     return r ? (_crossSeasonScores[`${historySeasons.indexOf(entry)}_${r.teamId}`] ?? -1) : -1;
+    case 'ruWins':      return r ? (r.seasonW ?? _teamStat(d, r.teamId, 'w') ?? -1) : -1;
+    case 'ruLosses':    return r ? (r.seasonL ?? _teamStat(d, r.teamId, 'l') ?? -1) : -1;
+    case 'ruRF':        return r ? (r.seasonRunsFor ?? _teamStat(d, r.teamId, 'runsFor') ?? -1) : -1;
+    case 'ruRA':        return r ? (r.seasonRunsAgainst ?? _teamStat(d, r.teamId, 'runsAgainst') ?? -1) : -1;
     case 'ruHR':        return r ? r.teamHR : -1;
     case 'ruAVG':       return r ? r.battingAvg : -1;
     case 'ruERA':       return r ? r.ERA : 99;
@@ -389,6 +420,8 @@ export function renderHistory() {
     return;
   }
 
+  _recomputeCrossSeasonScores();
+
   const sorted = [...historySeasons].sort((a, b) => {
     const av = getSortVal(a, sortCol), bv = getSortVal(b, sortCol);
     if (typeof av === 'string') return sortDir * av.localeCompare(bv);
@@ -408,26 +441,28 @@ export function renderHistory() {
   const statAvg = val =>
     `<td>${val != null && val > 0 ? '.' + Math.round(val * 1000).toString().padStart(3, '0') : '.000'}</td>`;
 
-  // Pre-compute season scores for all loaded entries
-  const seasonScores = sorted.map(e => computeSeasonScores(e.data));
-
-  const scoreCell = (scores, teamId) => {
-    if (!scores || teamId == null || !(teamId in scores)) return '<td class="ht-na">—</td>';
-    const s = scores[teamId];
+  const scoreCell = (origIdx, teamId) => {
+    const key = `${origIdx}_${teamId}`;
+    if (teamId == null || !(key in _crossSeasonScores)) return '<td class="ht-na">—</td>';
+    const s = _crossSeasonScores[key];
     return `<td title="Season score: ${s}/100"><span style="display:inline-block;min-width:28px;padding:1px 5px;border-radius:2px;background:${scoreColor(s)};color:#fff;font-family:'IBM Plex Mono',monospace;font-size:0.65rem;font-weight:700;text-align:center">${s}</span></td>`;
   };
 
-  const teamCols = (team, isChamp, scores) => {
+  const teamCols = (team, isChamp, origIdx, archiveData) => {
     if (!team) return '<td class="ht-na" colspan="10">—</td>';
     const dot = `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${team.color};margin-right:5px;vertical-align:middle"></span>`;
     const name = `${team.city} ${team.nickname || team.teamName}`;
     const badge = isChamp ? ' <span class="ht-champ-badge">WS</span>' : '';
+    const sW  = team.seasonW  ?? _teamStat(archiveData, team.teamId, 'w');
+    const sL  = team.seasonL  ?? _teamStat(archiveData, team.teamId, 'l');
+    const sRF = team.seasonRunsFor ?? _teamStat(archiveData, team.teamId, 'runsFor');
+    const sRA = team.seasonRunsAgainst ?? _teamStat(archiveData, team.teamId, 'runsAgainst');
     return `<td class="ht-name">${dot}${name}${badge}</td>
-      ${scoreCell(scores, team.teamId)}
-      ${stat(team.playoffWins, 0, 'Playoff wins')}
-      ${stat(team.playoffLosses ?? null, 0, 'Playoff losses')}
-      ${stat(team.playoffRunsFor ?? null, 0, 'Playoff runs scored')}
-      ${stat(team.playoffRunsAgainst ?? null, 0, 'Playoff runs allowed')}
+      ${scoreCell(origIdx, team.teamId)}
+      ${stat(sW, 0, 'Season wins')}
+      ${stat(sL, 0, 'Season losses')}
+      ${stat(sRF, 0, 'Season runs scored')}
+      ${stat(sRA, 0, 'Season runs allowed')}
       ${stat(team.teamHR, 0, 'Team home runs')}
       ${statAvg(team.battingAvg)}
       ${stat(team.ERA, 2, 'Team ERA')}
@@ -437,12 +472,11 @@ export function renderHistory() {
   let rows = sorted.map((entry, si) => {
     const origIdx = historySeasons.indexOf(entry);
     const d = entry.data;
-    const scores = seasonScores[si];
     const canView = Array.isArray(d.teams) && d.teams.length > 0;
     return `<tr>
       <td class="ht-filename" title="${entry.filename}">${entry.filename.replace(/\.json$/i, '')}</td>
-      ${teamCols(d.champion, true, scores)}
-      ${teamCols(d.runnerUp, false, scores)}
+      ${teamCols(d.champion, true, origIdx, d)}
+      ${teamCols(d.runnerUp, false, origIdx, d)}
       <td class="ht-del" style="white-space:nowrap">
         ${canView ? `<button class="ht-view-btn" onclick="viewHistorySeason(historyGetData(${origIdx}))" title="View in Players screen">Players</button>` : ''}
         <button class="ht-del-btn" onclick="deleteHistorySeason(${origIdx})" title="Remove from history">✕</button>
@@ -467,20 +501,20 @@ export function renderHistory() {
             ${th('season', 'Season')}
             ${th('champ', 'Team')}
             ${th('cScore', 'Score', 'Season score 0–100')}
-            ${th('cWins', 'PW', 'Playoff wins')}
-            ${th('cLosses', 'PL', 'Playoff losses')}
-            ${th('cRF', 'RF', 'Playoff runs scored')}
-            ${th('cRA', 'RA', 'Playoff runs allowed')}
+            ${th('cWins', 'W', 'Season wins')}
+            ${th('cLosses', 'L', 'Season losses')}
+            ${th('cRF', 'RS', 'Season runs scored')}
+            ${th('cRA', 'RA', 'Season runs allowed')}
             ${th('cHR', 'HR', 'Home runs')}
             ${th('cAVG', 'AVG', 'Team batting average')}
             ${th('cERA', 'ERA', 'Team ERA')}
             ${th('cWHIP', 'WHIP', 'Team WHIP')}
             ${th('ru', 'Team')}
             ${th('ruScore', 'Score', 'Season score 0–100')}
-            ${th('ruWins', 'PW', 'Playoff wins')}
-            ${th('ruLosses', 'PL', 'Playoff losses')}
-            ${th('ruRF', 'RF', 'Playoff runs scored')}
-            ${th('ruRA', 'RA', 'Playoff runs allowed')}
+            ${th('ruWins', 'W', 'Season wins')}
+            ${th('ruLosses', 'L', 'Season losses')}
+            ${th('ruRF', 'RS', 'Season runs scored')}
+            ${th('ruRA', 'RA', 'Season runs allowed')}
             ${th('ruHR', 'HR', 'Home runs')}
             ${th('ruAVG', 'AVG', 'Team batting average')}
             ${th('ruERA', 'ERA', 'Team ERA')}

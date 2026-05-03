@@ -5,7 +5,9 @@
 import { initLeague, importRosters, exportLeague } from './src/league.js';
 import { exportSeasonArchive, loadHistoryFolder, loadHistoryFiles, deleteHistorySeason, renderHistory, historySort, historyGetData, getSeasonViewerEntry, getSeasonViewerInfo, setSeasonViewerPos, stepSeasonViewer } from './src/history.js';
 import {
-  nav, editLeagueName, saveLeagueName, cancelLeagueName, clearSeason, advanceSeason,
+  nav, editLeagueName, saveLeagueName, cancelLeagueName,
+  editSeasonName, saveSeasonName, cancelSeasonName,
+  clearSeason, advanceSeason,
   viewHistorySeason, exitHistoricalView,
   viewSeasonStandings, seasonViewerNav, renderSeasonViewer,
   showTeamAnalysis, closeTeamAnalysis, teamAnalysisNav,
@@ -28,6 +30,7 @@ Object.assign(window, {
   // Navigation & views
   nav,
   editLeagueName, saveLeagueName, cancelLeagueName,
+  editSeasonName, saveSeasonName, cancelSeasonName,
   clearSeason, advanceSeason,
   openTeam, editTeamName, saveTeamName, cancelTeamName, uploadTeamLogo, removeTeamLogo,
   openBatterTable, closeBatterTable, sortBatterTable,
