@@ -445,6 +445,16 @@ export function exportLeague() {
   URL.revokeObjectURL(url);
 }
 
+// A league can be played only if every player carries ratings. A season archive (Export Season Archive)
+// keeps names and stats but no ratings, so loading one as a league would break the first pitch.
+export function leagueIsPlayable(lg) {
+  const num = Number.isFinite;
+  return !!lg && Array.isArray(lg.teams) && lg.teams.length > 0 && lg.teams.every(t =>
+    Array.isArray(t.batters) && t.batters.length > 0 && Array.isArray(t.pitchers) && t.pitchers.length > 0 &&
+    t.batters.every(b => num(b.kPct) && num(b.bbPct) && num(b.hrPct)) &&
+    t.pitchers.every(p => num(p.era) && num(p.kPct) && num(p.bbPct)));
+}
+
 export function importRosters(input) {
   const file = input.files[0];
   if (!file) return;
@@ -454,9 +464,14 @@ export function importRosters(input) {
     const text = e.target.result;
     if (file.name.toLowerCase().endsWith('.json')) {
       try {
+        const incoming = JSON.parse(text);
+        if (!leagueIsPlayable(incoming)) {
+          alert('That file has no player ratings, so it cannot be used as a league. It looks like a season archive: view it under Season History > Load Folder. To play, import a roster CSV or a league file.');
+          return;
+        }
         // Clear old logo keys before loading new league
         if (LEAGUE && LEAGUE.teams) LEAGUE.teams.forEach(t => localStorage.removeItem(`dlg-logo-${t.id}`));
-        LEAGUE = JSON.parse(text);
+        LEAGUE = incoming;
         // Logos in the JSON are already on team objects — saveLeague will split them out to separate keys
         saveLeague();
         window.nav('home');

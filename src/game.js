@@ -1,6 +1,6 @@
 import { MLB } from './data.js';
 import { ri, cl, battingAvg, setText, mkEl, teamLogoHtml } from './utils.js';
-import { LEAGUE, saveLeague } from './league.js';
+import { LEAGUE, saveLeague, leagueIsPlayable } from './league.js';
 
 // ====================================================================
 // GAME STATE
@@ -134,6 +134,7 @@ export function startScheduleGame() {
 }
 
 export function startGame(awayIdArg, homeIdArg) {
+  if (!leagueIsPlayable(LEAGUE)) { alert('This league has no player ratings, so a game cannot be played. Import a roster CSV or a league file (League Settings > Import Roster).'); return; }
   const awayId = awayIdArg !== undefined ? awayIdArg : parseInt(document.getElementById('sel-away').value);
   const homeId = homeIdArg !== undefined ? homeIdArg : parseInt(document.getElementById('sel-home').value);
   if (awayId === homeId) { alert('Please choose different teams.'); return; }
