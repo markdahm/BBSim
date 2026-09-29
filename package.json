@@ -7,7 +7,10 @@
     "dev": "browser-sync start --server --port 3001 --files '*.html, *.css, *.js, src/*.js' --no-notify",
     "start": "browser-sync start --server --port 3001 --files '*.html, *.css, *.js, src/*.js' --no-notify",
     "serve": "python3 -m http.server 8000",
-    "stamp": "node tools/stamp.js"
+    "stamp": "node tools/stamp.js",
+    "season": "node tools/season.mjs",
+    "check": "node tools/check-engine.mjs",
+    "test": "node tools/check-engine.mjs && node tools/season.mjs"
   },
   "keywords": [
     "baseball",

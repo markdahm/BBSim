@@ -15,6 +15,18 @@ npm run serve     # python3 http.server on port 8000
 
 ES modules require a server; opening `index.html` directly via `file://` will not work.
 
+## Checks
+
+Two headless tools run the real game code in Node (no browser) and exit non-zero on failure. Run them after any change to the engine, the ratings or the rosters.
+
+```bash
+npm run check     # tools/check-engine.mjs: load guard, debounced saves, archive refusal, one auto-play loop, steal credit
+npm run season    # tools/season.mjs: a full 2,430-game season on Configs/, checked against 2026 MLB rates
+npm test          # both
+```
+
+`tools/season.mjs path/to/roster.csv` plays another roster; `--no-check` prints without failing. `tools/headless.mjs` is the shared bootstrap (stub DOM, in-memory storage, a timer queue you drain by hand). `tools/stamp.js` writes the build stamp into `index.html`; the pre-commit hook runs it.
+
 ---
 
 ## Table of Contents
