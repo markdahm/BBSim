@@ -1292,6 +1292,8 @@ export function renderPlayersTable() {
   const getSortVal = p => {
     const c = p.career || {};
     switch (sortCol) {
+      case 'name': return p.name || '';
+      case 'team': return p.teamName || '';
       case 'avg':  return battingAvg(p);
       case 'hr':   return c.hr  || 0;
       case 'rbi':  return c.rbi || 0;
@@ -1325,7 +1327,10 @@ export function renderPlayersTable() {
     }
   };
   const sortVals = new Map(players.map(p => [p, getSortVal(p)]));
-  players.sort((a, b) => (sortVals.get(a) - sortVals.get(b)) * sortDir);
+  players.sort((a, b) => {
+    const x = sortVals.get(a), y = sortVals.get(b);
+    return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sortDir;
+  });
 
   // Header
   const thead = document.getElementById('players-thead');
@@ -1374,7 +1379,7 @@ export function renderPlayersTable() {
     `;
   }
   thead.querySelectorAll('th').forEach(th => {
-    if (th.getAttribute('onclick')?.includes(sortCol)) {
+    if (th.getAttribute('onclick') === `doSort('${sortCol}')`) {
       th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
     }
   });
@@ -1492,7 +1497,7 @@ export function renderPlayersTable() {
 }
 
 export function doSort(col) {
-  if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = -1; }
+  if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = (col === 'name' || col === 'team') ? 1 : -1; }   // names read A to Z first
   renderPlayersTable();
 }
 

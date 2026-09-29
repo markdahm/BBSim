@@ -772,3 +772,10 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .ht-arrow-col { padding:4px 6px !important; }
 .ht-arrow-btn { background:var(--ink); border:none; border-radius:3px; color:var(--chalk); font-size:0.7rem; cursor:pointer; padding:4px 9px; transition:all 0.12s; }
 .ht-arrow-btn:hover { background:var(--accent); }
+
+/* Schedule progress strip: one box per game (see updateSchedProgressStrip in game.js) */
+.sched-progress-strip { display:flex; flex-wrap:wrap; gap:1px; margin:6px 0 2px; }
+.pb { width:3px; height:3.75px; border-radius:1px; flex-shrink:0; }
+.pb-done { background:#3b82f6; }
+.pb-cur  { background:#f59e0b; }
+.pb-todo { background:#22c55e; }

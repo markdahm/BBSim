@@ -223,21 +223,31 @@ function schedProgressStrip() {
     return `<div id="sched-progress-strip" style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted);margin:6px 0 2px">${played} / ${sched.length} &nbsp;<span style="color:var(--ink);font-weight:600">${pct}%</span></div>`;
   }
   const unplayed = sched.length - played - current;
-  const box = (color) => `<div style="width:3px;height:3.75px;background:${color};border-radius:1px;flex-shrink:0"></div>`;
-  const boxes = [
-    ...Array(played).fill(box('#3b82f6')),
-    ...Array(current).fill(box('#f59e0b')),
-    ...Array(Math.max(0, unplayed)).fill(box('#22c55e')),
-  ].join('');
-  return `<div id="sched-progress-strip" style="display:flex;flex-wrap:wrap;gap:1px;margin:6px 0 2px">${boxes}</div>`;
+  const boxes = '<div class="pb pb-done"></div>'.repeat(played)
+    + '<div class="pb pb-cur"></div>'.repeat(current)
+    + '<div class="pb pb-todo"></div>'.repeat(Math.max(0, unplayed));
+  return `<div id="sched-progress-strip" class="sched-progress-strip">${boxes}</div>`;
 }
 
+// One box per scheduled game, laid out by count (played, then current, then unplayed), so a game
+// finishing only changes the boxes around the boundary. Rebuilding all 2,430 twice a game was the
+// second-largest cost of an auto-played season.
 function updateSchedProgressStrip() {
   const el = document.getElementById('sched-progress-strip');
   if (!el) return;
-  const tmp = document.createElement('div');
-  tmp.innerHTML = schedProgressStrip();
-  if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+  const sched = LEAGUE.schedule || [];
+  const played = sched.filter(g => g.played).length;
+  const current = schedGameIdx >= 0 ? 1 : 0;
+  if (progressAsPercent || el.children.length !== sched.length) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = schedProgressStrip();
+    if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+    return;
+  }
+  const kids = el.children;
+  for (let i = Math.max(0, played - 2); i < Math.min(sched.length, played + 2); i++) {
+    kids[i].className = 'pb ' + (i < played ? 'pb-done' : i < played + current ? 'pb-cur' : 'pb-todo');
+  }
 }
 
 // ── LIVE STANDINGS (hide-animation mode) ──
@@ -343,7 +353,14 @@ function renderLiveStandings() {
 
 function renderGameUI() {
   if (effHideAnim()) {
-    document.getElementById('sim-container').innerHTML = `<div class="matchup-picker">${schedProgressStrip()}${hideLiveRankings ? '' : renderLiveStandings()}</div>`;
+    const cont = document.getElementById('sim-container');
+    const strip = document.getElementById('sched-progress-strip'), standings = document.getElementById('live-standings');
+    if (strip && standings && cont.contains(strip)) {
+      updateSchedProgressStrip();
+      standings.innerHTML = hideLiveRankings ? '' : renderLiveStandings();
+      return;
+    }
+    cont.innerHTML = `<div class="matchup-picker">${schedProgressStrip()}<div id="live-standings">${hideLiveRankings ? '' : renderLiveStandings()}</div></div>`;
     return;
   }
   const away = G.away, home = G.home;
@@ -710,7 +727,7 @@ function simPitch() {
       }
       const t = ['lines out to short','ropes one to second — OUT','lasers one to center — caught!']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'LO'); showScoreboardMsg('LINE OUT', 1200); pushFeed('LO', batter.name); nextB(bi); recOut(bi); break;
     }
-    case 'hbp': { batter.career.hbp = (batter.career.hbp || 0) + 1; pitcher.game.balls++; pitcher.career.hbp++; pitcher.game.hbp++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit', 'HBP'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbH); nextB(bi); break; }
+    case 'hbp': { batter.career.hbp = (batter.career.hbp || 0) + 1; pitcher.game.balls++; pitcher.career.hbp++; pitcher.game.hbp++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit', 'HBP'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbH); batter.game.rbi += G.runs[bi] - rbH; batter.career.rbi = (batter.career.rbi || 0) + (G.runs[bi] - rbH); nextB(bi); break; }
     case 'single': {
       G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++;
       addLog(gTag(), `${batter.name} singles!`, 't-hit', '1B'); showScoreboardMsg('SINGLE!', 1500); pushFeed('1B', batter.name);
@@ -784,18 +801,18 @@ function simPitch() {
 function doWalk(batter, pitcher, bi, fielding) {
   pitcher.career.bb++; batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.bf++;
   addLog(gTag(), `${batter.name} draws a walk.`, 't-hit', 'BB'); showScoreboardMsg('WALK', 1500); pushFeed('BB', batter.name);
-  const rbW = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbW); nextB(bi); G.balls = 0; G.strikes = 0;
+  const rbW = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbW);
+  batter.game.rbi += G.runs[bi] - rbW; batter.career.rbi = (batter.career.rbi || 0) + (G.runs[bi] - rbW);   // a run walked in is an RBI
+  nextB(bi); G.balls = 0; G.strikes = 0;
   gRenderAll();
   if (G.walkoffPending && !G.over) { G.walkoffPending = false; endGame(); }
 }
 
 function tryAutoSteal(bi) {
   if (G.outs >= 2 || G.over) return;
-  const batting = bi === 0 ? G.away : G.home;
-  const li = G.lineupIdx[bi];
+  // G.bases holds the runners themselves; guessing them from lineup position credited steals to the wrong player
   const [r1, r2] = G.bases;
-  const runner1 = r1 ? batting.batters[(li + 8) % 9] : null;
-  const runner2 = r2 ? batting.batters[(li + 7) % 9] : null;
+  const runner1 = r1, runner2 = r2;
   const sp = r => { const s = r.sbRate || 0; const base = Math.min(s * 4, 0.65); return s < 0.112 ? base * 0.25 : base; };
   if (r1 && r2 && runner1 && runner2 && Math.random() < sp(runner1) && Math.random() < sp(runner2) * 0.5) {
     const sp1 = cl(0.54 + (runner1.sbRate / 0.25) * 0.32, 0.50, 0.86), sp2 = cl(0.50 + (runner2.sbRate / 0.25) * 0.30, 0.46, 0.82);

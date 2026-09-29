@@ -33,9 +33,15 @@ export function initLeague() {
         }
       });
       initAvgRoster();
-      saveLeague();
       return;
-    } catch(e) {}
+    } catch(e) {
+      // The saved league could not be read. Keep it: copy the raw text aside and refuse to write to
+      // storage until a roster is imported, so a random league is never saved over the real one.
+      try { localStorage.setItem('diamond-league-v3.bak', saved); } catch(e2) {}
+      storageLocked = true;
+      console.error('Saved league could not be read; a copy is in diamond-league-v3.bak', e);
+      alert('The saved league could not be read, so nothing will be saved until you import a roster or league file. A copy of the saved data is kept in browser storage under diamond-league-v3.bak.');
+    }
   }
   generateLeague();
 }
@@ -77,26 +83,57 @@ export function generateLeague() {
   saveLeague();
 }
 
+// ── Persistence ──
+// saveLeague() marks the league dirty and writes it shortly afterwards; a season of auto-played games
+// calls it once per game, and writing ~1 MB to localStorage each time was the biggest cost per game.
+// flushLeague() writes at once; it also runs when the page is hidden or closed.
+let storageLocked = false;      // set when the saved league could not be read (see initLeague)
+let saveTimer = null, savePending = false;
+const SAVE_DELAY_MS = 500;
+const lastLogo = new Map();     // team id -> logo last written, so unchanged logos are not rewritten
+let lastSchedulesJson = null;   // saved schedules as last written
+
 export function saveLeague() {
-  // Save logos to separate keys so the main payload stays within localStorage limits
+  savePending = true;
+  if (!saveTimer) saveTimer = setTimeout(flushLeague, SAVE_DELAY_MS);
+}
+
+export function flushLeague() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (!savePending) return;
+  savePending = false;
+  writeLeague();
+}
+
+if (typeof window !== 'undefined' && window.addEventListener) {
+  window.addEventListener('pagehide', flushLeague);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushLeague(); });
+}
+
+function writeLeague() {
+  const ind = document.getElementById('save-ind');
+  if (storageLocked) {
+    if (ind) { ind.textContent = '⚠ Not saving — saved league could not be read'; ind.className = 'save-indicator'; }
+    return;
+  }
+  // Logos live in their own keys so the main payload stays within localStorage limits; write only the ones that changed
   (LEAGUE.teams || []).forEach(t => {
-    if (t.logo) {
-      try { localStorage.setItem(`dlg-logo-${t.id}`, t.logo); } catch(e) {}
-    } else {
-      localStorage.removeItem(`dlg-logo-${t.id}`);
-    }
+    const logo = t.logo || null;
+    if (lastLogo.get(t.id) === logo) return;
+    try { logo ? localStorage.setItem(`dlg-logo-${t.id}`, logo) : localStorage.removeItem(`dlg-logo-${t.id}`); lastLogo.set(t.id, logo); } catch(e) {}
   });
-  // Save schedules to a separate key so the main payload stays within localStorage limits
-  try { localStorage.setItem('dlg-saved-schedules', JSON.stringify(LEAGUE.savedSchedules || [])); } catch(e) {}
-  // Save league data without logos or saved schedules
+  // Saved schedules likewise, and only when they changed
+  const schedJson = JSON.stringify(LEAGUE.savedSchedules || []);
+  if (schedJson !== lastSchedulesJson) {
+    try { localStorage.setItem('dlg-saved-schedules', schedJson); lastSchedulesJson = schedJson; } catch(e) {}
+  }
+  // League data without logos, saved schedules, or the per-game scratch (`game`) that startGame() rebuilds
   const { savedSchedules, ...leagueWithoutSchedules } = LEAGUE;
   const slim = { ...leagueWithoutSchedules, teams: LEAGUE.teams.map(({ logo, ...rest }) => rest) };
   try {
-    localStorage.setItem('diamond-league-v3', JSON.stringify(slim));
-    const ind = document.getElementById('save-ind');
+    localStorage.setItem('diamond-league-v3', JSON.stringify(slim, (k, v) => k === 'game' ? undefined : v));
     if (ind) { ind.textContent = '✓ Saved'; ind.className = 'save-indicator saved'; setTimeout(() => { ind.textContent = '● Auto-saved to browser'; ind.className = 'save-indicator'; }, 2000); }
   } catch(e) {
-    const ind = document.getElementById('save-ind');
     if (ind) { ind.textContent = '⚠ Storage full — Export to save'; ind.className = 'save-indicator'; }
   }
 }
@@ -311,8 +348,10 @@ const REAL_MLB_DIVISIONS = {
 };
 
 export function importFromCSV(text) {
+  storageLocked = false;
   // Clear any logos stored from a previous league so they don't bleed into the new one
   if (LEAGUE && LEAGUE.teams) LEAGUE.teams.forEach(t => localStorage.removeItem(`dlg-logo-${t.id}`));
+  lastLogo.clear();
 
   // Strip BOM and normalize line endings
   const clean = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -469,8 +508,10 @@ export function importRosters(input) {
           alert('That file has no player ratings, so it cannot be used as a league. It looks like a season archive: view it under Season History > Load Folder. To play, import a roster CSV or a league file.');
           return;
         }
+        storageLocked = false;
         // Clear old logo keys before loading new league
         if (LEAGUE && LEAGUE.teams) LEAGUE.teams.forEach(t => localStorage.removeItem(`dlg-logo-${t.id}`));
+        lastLogo.clear();
         LEAGUE = incoming;
         // Logos in the JSON are already on team objects — saveLeague will split them out to separate keys
         saveLeague();
