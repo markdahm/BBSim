@@ -408,7 +408,7 @@ export function importFromCSV(text) {
     const nickname = parts[parts.length - 1];
     const city = parts.slice(0, -1).join(' ');
 
-    const isPitcher = p => /^(p|sp|rp|lhp|rhp|pitcher)$/i.test(p.position.trim());
+    const isPitcher = p => /^(p|sp|rp|cl|cp|lhp|rhp|pitcher)$/i.test(p.position.trim());
     const rawBatters = players.filter(p => !isPitcher(p));
     const batters = rawBatters.map(mkBatterFromCSV);
     while (batters.length < 9) batters.push(mkBatter(POSITIONS[batters.length % POSITIONS.length]));
