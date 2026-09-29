@@ -1582,6 +1582,7 @@ function renderScheduleView(cont) {
   let html = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:${schedShowLoad ? '12px' : '24px'}">
     <button class="btn sm primary" onclick="schedNewSeason()">New Schedule</button>
     ${saved.length > 0 ? `<button class="btn sm${schedShowLoad ? ' active-btn' : ''}" onclick="schedLoadOpen()">Load Schedule</button>` : ''}
+    <label class="btn sm" style="cursor:pointer">Import Schedule<input type="file" accept=".json" onchange="schedImport(this)" style="display:none"></label>
     ${sched.length > 0 ? `<button class="btn sm" onclick="schedDeleteAll()">Clear Schedule</button>` : ''}
     ${sched.length > 0 ? `<button class="btn sm" onclick="schedRecycle()">Recycle Schedule</button>` : ''}
     ${sched.length > 0 ? `<span style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--muted)">${played} / ${sched.length} games played</span>` : ''}
@@ -1878,6 +1879,40 @@ export function navToTeamSchedule(teamId) {
   schedTeamFilter = t.name;
   LEAGUE._schedFilter = t.name;
   nav('schedule');
+}
+
+// Adds a schedule file ({name, games:[{away, home}]}, teams by name) to the saved schedules.
+export function schedImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';   // so choosing the same file again still fires onchange
+  const reader = new FileReader();
+  reader.onload = e => {
+    let data;
+    try { data = JSON.parse(e.target.result); } catch (err) { alert('Could not read that file as JSON.'); return; }
+    if (!data || !Array.isArray(data.games) || data.games.length === 0) { alert('That file has no games in it.'); return; }
+    const idByName = new Map(LEAGUE.teams.map(t => [t.name.toLowerCase(), t.id]));
+    const missing = new Set();
+    const games = data.games.map(g => {
+      const awayId = idByName.get(String(g.away).toLowerCase()), homeId = idByName.get(String(g.home).toLowerCase());
+      if (awayId === undefined) missing.add(g.away);
+      if (homeId === undefined) missing.add(g.home);
+      return { awayId, homeId, played: false, awayScore: null, homeScore: null };
+    });
+    if (missing.size > 0) { alert(`Not imported. These teams are not in the league: ${[...missing].join(', ')}`); return; }
+    const name = String(data.name || file.name.replace(/\.json$/i, '')).trim();
+    if (!LEAGUE.savedSchedules) LEAGUE.savedSchedules = [];
+    const entry = { name, games };
+    const at = LEAGUE.savedSchedules.findIndex(s => s.name === name);
+    if (at >= 0) {
+      if (!confirm(`A saved schedule named "${name}" already exists. Replace it?`)) return;
+      LEAGUE.savedSchedules[at] = entry;
+    } else LEAGUE.savedSchedules.push(entry);
+    saveLeague();
+    schedShowLoad = true;
+    renderSchedule();
+  };
+  reader.readAsText(file);
 }
 
 export function schedLoadPick(idx) {
