@@ -24,7 +24,7 @@ let hideLiveRankings = localStorage.getItem('dlg-hide-rankings') === '1';
 let quietRun = false;
 let lastQuietRender = 0;
 const QUIET_RENDER_MS = 100;   // during a quiet run, redraw the standings at most this often
-const effHideAnim = () => (hideAnimation || quietRun) && simMode !== 'playoffs';
+const effHideAnim = () => quietRun || (hideAnimation && simMode !== 'playoffs');
 let progressAsPercent = localStorage.getItem('dlg-prog-pct')    === '1';
 let _prevStandingsSnap = null; // division → teamId[] sorted by rank, taken before each game's W/L update
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
@@ -357,6 +357,7 @@ function renderLiveStandings() {
 
 function renderGameUI() {
   if (effHideAnim()) {
+    if (simMode === 'playoffs') return;
     const cont = document.getElementById('sim-container');
     const strip = document.getElementById('sched-progress-strip'), standings = document.getElementById('live-standings');
     if (strip && standings && cont.contains(strip)) {
@@ -1619,10 +1620,10 @@ function playoffAutoNext() {
   let sIdx = p.activeSeriesIdx;
   if (sIdx === null || sIdx === undefined) {
     // Series just finished — find next unfinished in current round (for autoAll)
-    if (!p._autoAll) { playoffSeriesAutoRemaining = 0; playoffIsAutoMode = false; window.nav('playoffs'); return; }
+    if (!p._autoAll) { playoffSeriesAutoRemaining = 0; playoffIsAutoMode = false; quietRun = false; window.nav('playoffs'); return; }
     const targetRound = p._autoRound || p.round;
     const idx = p.series.findIndex(s => s.round === targetRound && s.winner == null && s.higherSeedId != null && s.lowerSeedId != null);
-    if (idx === -1) { playoffSeriesAutoRemaining = 0; playoffIsAutoMode = false; p._autoAll = false; p._autoRound = null; saveLeague(); window.nav('playoffs'); return; }
+    if (idx === -1) { playoffSeriesAutoRemaining = 0; playoffIsAutoMode = false; p._autoAll = false; p._autoRound = null; quietRun = false; saveLeague(); window.nav('playoffs'); return; }
     sIdx = idx;
     p.activeSeriesIdx = sIdx;
     // Reset counter for the new series
@@ -1633,6 +1634,7 @@ function playoffAutoNext() {
   if (!series || series.winner != null) {
     playoffSeriesAutoRemaining = 0;
     playoffIsAutoMode = false;
+    quietRun = false;
     p.activeSeriesIdx = null;
     saveLeague();
     window.nav('playoffs');
@@ -1641,6 +1643,7 @@ function playoffAutoNext() {
 
   if (playoffSeriesAutoRemaining <= 0) {
     playoffIsAutoMode = false;
+    quietRun = false;
     p.activeSeriesIdx = null;
     saveLeague();
     window.nav('playoffs');
@@ -1648,6 +1651,9 @@ function playoffAutoNext() {
   }
   playoffSeriesAutoRemaining--;
   playoffIsAutoMode = true;
+
+  // keep the bracket current while games fly past, without redrawing it for every one
+  if (quietRun && window.renderPlayoffs && performance.now() - lastQuietRender >= QUIET_RENDER_MS) { lastQuietRender = performance.now(); window.renderPlayoffs(); }
 
   const gameNum = series.games.length + 1;
   const { homeId, awayId } = getGameHomeAway(series, gameNum);
@@ -1684,6 +1690,7 @@ export function playoffAutoSeries(seriesIdx) {
   playoffIsAutoMode = true;
   saveLeague();
   window.nav('playoffs');
+  quietRun = true;
   playoffAutoNext();
   startAuto('game');
 }
@@ -1700,6 +1707,7 @@ export function playoffAutoRound(roundKey) {
   playoffIsAutoMode = true;
   saveLeague();
   window.nav('playoffs');
+  quietRun = true;
   playoffAutoNext();
   startAuto('game');
 }
@@ -1716,6 +1724,7 @@ export function playoffAutoAll() {
   playoffIsAutoMode = true;
   saveLeague();
   window.nav('playoffs');
+  quietRun = true;
   playoffAutoNext();
   startAuto('game');
 }
