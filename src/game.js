@@ -20,7 +20,11 @@ let autoMultiRemaining = 0;  // games left to auto-play in multi-game mode
 let hideAnimation    = localStorage.getItem('dlg-hide-anim')     === '1';
 let hideLiveRankings = localStorage.getItem('dlg-hide-rankings') === '1';
 // Playoffs always use the full animated UI regardless of the hide-animation toggle
-const effHideAnim = () => hideAnimation && simMode !== 'playoffs';
+// A quiet run ("All of 'em") never animates, whatever the toggles say: its job is to finish.
+let quietRun = false;
+let lastQuietRender = 0;
+const QUIET_RENDER_MS = 100;   // during a quiet run, redraw the standings at most this often
+const effHideAnim = () => (hideAnimation || quietRun) && simMode !== 'playoffs';
 let progressAsPercent = localStorage.getItem('dlg-prog-pct')    === '1';
 let _prevStandingsSnap = null; // division → teamId[] sorted by rank, taken before each game's W/L update
 let playoffSeriesAutoRemaining = 0; // games left in auto-play series mode
@@ -141,7 +145,7 @@ export function startGame(awayIdArg, homeIdArg) {
   awayTeamId = awayId; homeTeamId = homeId;
   const away = LEAGUE.teams.find(t => t.id === awayId);
   const home = LEAGUE.teams.find(t => t.id === homeId);
-  if (!autoChaining) stopAutoLoop();   // a manual start takes over from any auto-play loop
+  if (!autoChaining) { stopAutoLoop(); quietRun = false; }   // a manual start takes over from any auto-play loop
 
   G = {
     running: true,
@@ -357,6 +361,8 @@ function renderGameUI() {
     const strip = document.getElementById('sched-progress-strip'), standings = document.getElementById('live-standings');
     if (strip && standings && cont.contains(strip)) {
       updateSchedProgressStrip();
+      if (quietRun && performance.now() - lastQuietRender < QUIET_RENDER_MS) return;
+      lastQuietRender = performance.now();
       standings.innerHTML = hideLiveRankings ? '' : renderLiveStandings();
       return;
     }
@@ -1147,6 +1153,7 @@ function endGame() {
       saveLeague();
       G.running = false;            // the season is over; nothing is left to auto-play
       autoMultiRemaining = 0;
+      quietRun = false;
       window.nav('playoffs');
       return;
     }
@@ -1374,6 +1381,7 @@ export function gAutoAll() {
   const unplayed = sched.filter(g => !g.played).length;
   if (unplayed === 0) { alert('No unplayed games remaining.'); return; }
   autoMultiRemaining = unplayed;
+  quietRun = true;
   autoMultiNext();
   startAuto('game');
 }
@@ -1381,13 +1389,14 @@ export function gAutoAll() {
 function autoMultiNext() {
   if (autoMultiRemaining <= 0) {
     autoMultiRemaining = 0;
+    quietRun = false;
     G.running = false;
     renderSimulate();
     return;
   }
   const sched = LEAGUE.schedule || [];
   const idx = nextSchedIdx(sched);
-  if (idx === -1) { autoMultiRemaining = 0; G.running = false; renderSimulate(); return; }
+  if (idx === -1) { autoMultiRemaining = 0; quietRun = false; G.running = false; renderSimulate(); return; }
   autoMultiRemaining--;
   schedGameIdx = idx;
   simMode = 'schedule';
