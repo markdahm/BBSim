@@ -1,4 +1,4 @@
-import { FN, LN } from './data.js';
+import { FN, LN, MLB_TEAM_IDS } from './data.js';
 
 // ── Pure helpers ──
 export const ri = n => Math.floor(Math.random() * n);
@@ -12,9 +12,17 @@ export function randomColor() {
 }
 
 // ── Team logo ──
+// A logo uploaded for the team wins; otherwise the team's file in mlb-logos/, otherwise its emoji.
+export function teamLogoSrc(team) {
+  if (!team) return '';
+  if (team.logo) return team.logo;
+  const id = MLB_TEAM_IDS[team.name];
+  return id ? `mlb-logos/${id}.svg` : '';
+}
 export function teamLogoHtml(team, size = 22) {
-  if (team && team.logo) {
-    return `<span style="display:inline-block;width:${size}px;height:${size}px;background:url('${team.logo}') center/contain no-repeat;vertical-align:middle;flex-shrink:0;border-radius:2px"></span>`;
+  const src = teamLogoSrc(team);
+  if (src) {
+    return `<span style="display:inline-block;width:${size}px;height:${size}px;background:url('${src}') center/contain no-repeat;vertical-align:middle;flex-shrink:0;border-radius:2px"></span>`;
   }
   return (team && team.emoji) || '';
 }

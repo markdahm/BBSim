@@ -29,6 +29,16 @@ export function pctToRating(kind, x) {
   return Math.max(0, Math.min(100, Math.round(r)));
 }
 
+// MLB team ids, which name the default logo files in mlb-logos/ (108.svg ...). Keys are the team names used in the roster CSV.
+export const MLB_TEAM_IDS = {
+  'Las Vegas Athletics':133,'Pittsburgh Pirates':134,'San Diego Padres':135,'Seattle Mariners':136,'San Francisco Giants':137,
+  'St Louis Cardinals':138,'Tampa Bay Rays':139,'Texas Rangers':140,'Toronto Blue Jays':141,'Minnesota Twins':142,
+  'Philadelphia Phillies':143,'Atlanta Braves':144,'Chicago White Sox':145,'Miami Marlins':146,'New York Yankees':147,
+  'Milwaukee Brewers':158,'Los Angeles Angels':108,'Arizona Diamondbacks':109,'Baltimore Orioles':110,'Boston Red Soxs':111,
+  'Chicago Cubs':112,'Cincinnati Reds':113,'Cleveland Guardians':114,'Colorado Rockies':115,'Detroit Tigers':116,
+  'Houston Astros':117,'Kansas City Royals':118,'Los Angeles Dodgers':119,'Washington Nationals':120,'New York Mets':121,
+};
+
 export const B_ARCHS = [
   {l:'Power',    avgD:-.020,kD:+.06,bbD:+.01,hrD:+.015,goD:-.02,trD:0},
   {l:'Contact',  avgD:+.025,kD:-.06,bbD:-.01,hrD:-.010,goD:+.02,trD:0},

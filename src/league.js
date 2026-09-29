@@ -430,7 +430,7 @@ export function importFromCSV(text) {
     });
   }
 
-  LEAGUE = { name: 'MLB 2025', season: 2025, teams, gamesPlayed: 0 };
+  LEAGUE = { name: 'MLB 2026', season: 2026, teams, gamesPlayed: 0 };
   saveLeague();
 }
 
