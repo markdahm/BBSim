@@ -12,12 +12,12 @@ export function randomColor() {
 }
 
 // ── Team logo ──
-// A logo uploaded for the team wins; otherwise the team's file in mlb-logos/, otherwise its emoji.
+// A logo uploaded for the team wins; otherwise the team's file in Configs/mlb-logos/, otherwise its emoji.
 export function teamLogoSrc(team) {
   if (!team) return '';
   if (team.logo) return team.logo;
   const id = MLB_TEAM_IDS[team.name];
-  return id ? `mlb-logos/${id}.svg` : '';
+  return id ? `Configs/mlb-logos/${id}.svg` : '';
 }
 export function teamLogoHtml(team, size = 22) {
   const src = teamLogoSrc(team);

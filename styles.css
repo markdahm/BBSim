@@ -310,7 +310,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .status-bar { display:flex; gap:18px; align-items:center; padding:13px 16px; border:1px solid var(--line); border-radius:4px; background:var(--panel); flex-wrap:wrap; }
 .runners-bar { padding:10px 16px 14px; border:1px solid var(--line); border-radius:4px; background:var(--panel); }
 .field-row { display:flex; gap:14px; align-items:flex-start; }
-.field-scoreboard { width:742px; height:273px; flex-shrink:0; background:url('scoreboard.png') 0 0/auto no-repeat; border-radius:3px; overflow:hidden; position:relative; }
+.field-scoreboard { width:742px; height:273px; flex-shrink:0; background:url('Artwork/scoreboard.png') 0 0/auto no-repeat; border-radius:3px; overflow:hidden; position:relative; }
 .sb-left-panel { position:absolute; top:6px; left:8px; display:flex; flex-direction:column; align-items:center; gap:3px; pointer-events:none; }
 .sb-inning { font-family:'Bebas Neue',sans-serif; font-size:1rem; color:#ffcc00; letter-spacing:3px; white-space:nowrap; }
 .sb-feed { display:flex; flex-direction:column; gap:2px; align-self:stretch; }
@@ -337,7 +337,7 @@ body { background:var(--chalk); color:var(--ink); font-family:'IBM Plex Sans',sa
 .sbf-stat { display:flex; flex-direction:column; align-items:center; gap:6px; }
 .sbf-lbl { font-family:'Oswald',sans-serif; font-size:0.99rem; font-weight:600; letter-spacing:2px; color:#997700; text-transform:uppercase; }
 .sbf-val { font-family:'Bebas Neue',sans-serif; font-size:2.28rem; color:#ffcc00; text-shadow:0 0 10px rgba(255,204,0,0.7); }
-.ballpark { position:relative; width:500px; height:273px; background:url('diamond.png') center/cover no-repeat; border-radius:3px; overflow:hidden; }
+.ballpark { position:relative; width:500px; height:273px; background:url('Artwork/diamond.png') center/cover no-repeat; border-radius:3px; overflow:hidden; }
 /* Base indicators positioned over the clean diamond graphic */
 .ballpark .base { position:absolute; width:10px; height:10px; border:1px solid rgba(255,255,255,0.9); background:transparent; transform:rotate(45deg); transition:background 0.18s,border-color 0.18s; }
 .ballpark .base.on { background:#e02020; border-color:#e02020; box-shadow:0 0 8px rgba(220,0,0,0.8); }

@@ -49,6 +49,14 @@ ES modules require a server; opening `index.html` directly via `file://` will no
 index.html        — App shell, page layouts, overlay HTML
 styles.css        — All CSS (dark theme, scoreboard, cards, etc.)
 app.js            — Entry point: imports modules, exposes window globals, boots app
+Artwork/          — Images the page loads: scoreboard.png, diamond.png (OraclePark.gif is not used)
+Configs/          — Files you load into the app, plus the default team logos
+  MLB Rosters 2026 players.csv   — per-player 2026 ratings (League Settings > Import Roster)
+  MLB Rosters 2026 adjusted.csv  — older roster with one rating set per position
+  2026 MLB Schedule.json         — real 2026 schedule (Schedule > Import Schedule)
+  MLB_2026_simulated.json        — a simulated 2026 season with playoffs (Import Roster)
+  SavedGames/                    — season archives (Season History > Load Folder); not a league
+  mlb-logos/                     — default team logos, named by MLB team id (108.svg ...)
 src/
   data.js         — Static constants: MLB outcome rates, archetypes, team/league structure
   utils.js        — Pure helpers, DOM utilities, stat calculations
