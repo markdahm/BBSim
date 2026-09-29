@@ -1,6 +1,6 @@
 import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl } from './utils.js';
 import { LEAGUE, saveLeague, allBatters, allPitchers, applyAvgRosterToLeague } from './league.js';
-import { MLB } from './data.js';
+import { MLB, ratingToPct, pctToRating } from './data.js';
 import { renderSimulate, stopAfterCurrentGame, simSetMode } from './game.js';
 import { exportSeasonArchive, renderHistory, getSeasonViewerEntry, getSeasonViewerInfo, setSeasonViewerPos, stepSeasonViewer, getAllHistorySeasons } from './history.js';
 
@@ -780,8 +780,8 @@ function projectPlayer(p) {
     const go = cl(p.goPct, .12, .32);
     const speedFactor  = cl((p.sbRate || 0.075) / 0.15, 0, 1);
     const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
-    const contactRate  = cl(0.240 - (p.kPct||0.20) * 0.240, 0.130, 0.230);
-    const hitRate      = cl(contactRate + speedBonus, 0.120, 0.250);
+    const contactRate  = cl(0.260 - (p.kPct||0.20) * 0.260, 0.130, 0.245);
+    const hitRate      = cl(contactRate + speedBonus, 0.120, 0.265);
     const adjSinglePct = (p.singlePct||0) + Math.max(0, speedBonus);
     const rawHitSum    = adjSinglePct + (p.doublePct||0) + (p.triplePct||0) + (p.hrPct||0);
     const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
@@ -839,13 +839,13 @@ function renderCard(t, p) {
 
   // Ratings (0-100 scale)
   const ratings = isBatter ? [
-    { l:'Contact', v: Math.round((1 - (p.kPct / 0.40)) * 100) },
-    { l:'Power',   v: Math.round((p.hrPct / 0.065) * 100) },
-    { l:'Patience',v: Math.round((p.bbPct / 0.18) * 100) },
+    { l:'Contact', v: pctToRating('contact', p.kPct) },
+    { l:'Power',   v: pctToRating('power', p.hrPct) },
+    { l:'Patience',v: pctToRating('patience', p.bbPct) },
     { l:'Speed',   v: Math.round((p.sbRate / 0.15) * 100) },
   ] : [
-    { l:'Strikeout',v: Math.round((p.kPct / 0.35) * 100) },
-    { l:'Control', v: Math.round((1 - (p.bbPct / 0.14)) * 100) },
+    { l:'Strikeout',v: pctToRating('strikeout', p.kPct) },
+    { l:'Control', v: pctToRating('control', p.bbPct) },
     { l:'GB Rate', v: Math.round(((p.goD + 0.04) / 0.08) * 100) },
     { l:'Stuff',   v: Math.round(((6.0 - p.era) / 4.0) * 100) },
   ];
@@ -995,13 +995,13 @@ export function updateRating(label, rawVal) {
   const v = Math.max(0, Math.min(99, parseInt(rawVal) || 0));
 
   if (p.type === 'batter') {
-    if (label === 'Contact')  { p.kPct  = cl((1 - v/100) * 0.40, 0.10, 0.40); p.avg = cl(0.195 + (v/100) * 0.130, 0.190, 0.330); }
-    if (label === 'Power')    { p.hrPct = cl((v/100) * 0.065, 0.002, 0.065); p.doublePct = cl(0.022 + (v/100) * 0.050, 0.02, 0.09); }
-    if (label === 'Patience') p.bbPct  = cl((v/100) * 0.18, 0.04, 0.18);
+    if (label === 'Contact')  { p.kPct  = cl(ratingToPct('contact', v), 0.10, 0.40); p.avg = cl(0.195 + (v/100) * 0.130, 0.190, 0.330); }
+    if (label === 'Power')    { p.hrPct = cl(ratingToPct('power', v), 0.002, 0.10); p.doublePct = cl(0.022 + (v/100) * 0.050, 0.02, 0.09); }
+    if (label === 'Patience') p.bbPct  = cl(ratingToPct('patience', v), 0.04, 0.18);
     if (label === 'Speed')    p.sbRate = cl((v/100) * 0.15, 0.02, 0.25);
   } else {
-    if (label === 'Strikeout') p.kPct  = cl((v/100) * 0.35, 0.14, 0.35);
-    if (label === 'Control')   p.bbPct = cl((1 - v/100) * 0.14, 0.04, 0.14);
+    if (label === 'Strikeout') p.kPct  = cl(ratingToPct('strikeout', v), 0.14, 0.35);
+    if (label === 'Control')   p.bbPct = cl(ratingToPct('control', v), 0.04, 0.14);
     if (label === 'GB Rate')   p.goD   = (v/100) * 0.08 - 0.04;
     if (label === 'Stuff')     p.era   = cl(6.0 - (v/100) * 4.0, 2.0, 6.0);
   }
@@ -1535,7 +1535,7 @@ export function advanceSeason() {
     [...t.batters, ...t.pitchers].forEach(p => {
       if (p.type === 'batter') {
         const g = p.career;
-        if (g.pa > 0) p.seasons.push({ year:LEAGUE.season, g:g.g||0, pa:g.pa, ab:g.ab, h:g.h, hr:g.hr, rbi:g.rbi, r:g.r, bb:g.bb, k:g.k, doubles:g.doubles||0, triples:g.triples||0, sb:g.sb||0, cs:g.cs||0 });
+        if (g.pa > 0) p.seasons.push({ year:LEAGUE.season, g:g.g||0, pa:g.pa, ab:g.ab, h:g.h, hr:g.hr, rbi:g.rbi, r:g.r, bb:g.bb, hbp:g.hbp||0, k:g.k, doubles:g.doubles||0, triples:g.triples||0, sb:g.sb||0, cs:g.cs||0 });
         p.career = { g:0, pa:0, ab:0, h:0, hr:0, rbi:0, r:0, bb:0, k:0, sb:0, cs:0, doubles:0, triples:0 };
       } else {
         const g = p.career;

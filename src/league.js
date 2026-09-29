@@ -1,4 +1,4 @@
-import { MLB_STRUCTURE, POSITIONS, EMOJIS, MLB, B_ARCHS, P_ARCHS, LINEUP_PROFILES, PITCHER_PROFILES } from './data.js';
+import { MLB_STRUCTURE, POSITIONS, EMOJIS, MLB, B_ARCHS, P_ARCHS, LINEUP_PROFILES, PITCHER_PROFILES, ratingToPct } from './data.js';
 import { ri, rn, rand, cl, randomColor } from './utils.js';
 
 // ====================================================================
@@ -185,7 +185,7 @@ export function mkBatter(pos) {
     avg:       cl(0.248 + a.avgD + rand(-.022, .022), .190, .330),
     kPct:      cl(MLB.k    + a.kD  + rand(-.03, .03),  .10, .40),
     bbPct:     cl(MLB.walk + a.bbD + rand(-.02, .02),  .04, .18),
-    hrPct:     cl(MLB.hr * 0.65 + a.hrD + rand(-.010, .012), .002, .065),
+    hrPct:     cl(MLB.hr * 1.08 + a.hrD + rand(-.010, .012), .002, .10),
     singlePct: cl(MLB.single        + rand(-.02, .02),  .08, .22),
     doublePct: cl(MLB.double        + rand(-.01, .01),  .02, .09),
     triplePct: cl(MLB.triple + (a.trD || 0) + rand(0, .005), .001, .012),
@@ -225,9 +225,9 @@ function mkBatterFromCSV(row) {
   const speed    = cl(parseInt(row.speed)    || 50, 0, 99);
 
   // Same inverse formulas as updateRating — CSV value → internal probability
-  const kPct      = cl((1 - contact/100)  * 0.40, 0.10, 0.40);
-  const hrPct     = cl(Math.pow(power/100, 1.8) * 0.065, 0.002, 0.065);
-  const bbPct     = cl((patience/100)      * 0.18, 0.04, 0.18);
+  const kPct      = cl(ratingToPct('contact', contact), 0.10, 0.40);
+  const hrPct     = cl(ratingToPct('power', power), 0.002, 0.10);
+  const bbPct     = cl(ratingToPct('patience', patience), 0.04, 0.18);
   const sbRate    = cl((speed/100)         * 0.15, 0.02, 0.25);
   const doublePct = cl(0.022 + (power/100) * 0.050, .02, .09);
   const triplePct = cl(0.001 + (speed/100) * 0.011, .001, .012);
@@ -258,8 +258,8 @@ function mkPitcherFromCSV(row) {
   const stuff     = cl(parseInt(row.stuff)     || 50, 0, 99);
 
   // Same inverse formulas as updateRating — CSV value → internal probability
-  const kPct  = cl((strikeout/100)       * 0.35, 0.14, 0.35);
-  const bbPct = cl((1 - control/100)     * 0.14, 0.04, 0.14);
+  const kPct  = cl(ratingToPct('strikeout', strikeout), 0.14, 0.35);
+  const bbPct = cl(ratingToPct('control', control), 0.04, 0.14);
   const era   = cl(6.0 - (stuff/100)     * 4.0,  2.0,  6.0);
   const goD   = (gbRate/100) * 0.08 - 0.04;
   const arch  = stuff >= 75 ? 'Ace' : strikeout >= 75 ? 'Strikeout Artist'

@@ -615,60 +615,45 @@ function simPitch() {
   const batter  = batting.batters[G.lineupIdx[bi]];
   const pitcher = fielding.pitchers[fielding.activePitcher];
   pitcher.game.pitches++;
-  const probs = calcProbs(batter, pitcher);
+  const probs = calcProbs(batter, pitcher);   // balls in play only: walks, strikeouts and HBP come from the pitch itself
+  const rates = pitchRates(batter, pitcher, getFatigue(pitcher));
 
-  if (Math.random() < 0.11 && G.strikes < 2) { G.strikes++; pitcher.game.strikes++; addLog(gTag(), `Foul ball. Count: ${G.balls}-${G.strikes}.`, 't-info'); gRenderAll(); return; }
-  const fatigue = getFatigue(pitcher);
-  const ballChance = cl(0.20 * ((batter.bbPct * 0.6 + pitcher.bbPct * (1 + fatigue * 0.6) * 0.4) / 0.081), 0.08, 0.42);
-  if (Math.random() < ballChance && G.balls < 4) { G.balls++; pitcher.game.balls++; addLog(gTag(), `Ball ${G.balls}. Count: ${G.balls}-${G.strikes}.`, 't-info'); if (G.balls >= 4) { doWalk(batter, pitcher, bi, fielding); return; } gRenderAll(); return; }
-  if (Math.random() < 0.10 && G.strikes < 3) {
+  const punchOut = desc => {
+    G.balls = 0; G.strikes = 0;
+    batter.career.pa = (batter.career.pa || 0) + 1; batter.career.ab++; batter.game.ab++;
+    pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
+    addLog(gTag(), desc, 't-k', 'K');
+    showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
+    nextB(bi); recOut(bi); gRenderAll();
+  };
+  const addStrike = (calledDesc, finalDesc) => {
     G.strikes++; pitcher.game.strikes++;
-    if (G.strikes >= 3) {
-      G.balls = 0; G.strikes = 0;
-      batter.career.pa = (batter.career.pa || 0) + 1; batter.career.ab++; batter.game.ab++;
-      pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
-      addLog(gTag(), `Called strike 3. ${batter.name} struck out looking! ⚡`, 't-k', 'K');
-      showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
-      nextB(bi); recOut(bi); gRenderAll(); return;
-    }
-    addLog(gTag(), `Called strike ${G.strikes}. Count: ${G.balls}-${G.strikes}.`, 't-info'); gRenderAll(); return;
-  }
-  const swingMissChance = cl(pitcher.kPct * 0.45 + batter.kPct * 0.3, 0.05, 0.20);
-  if (Math.random() < swingMissChance && G.strikes < 3) {
-    G.strikes++; pitcher.game.strikes++;
-    if (G.strikes >= 3) {
-      G.balls = 0; G.strikes = 0;
-      batter.career.pa = (batter.career.pa || 0) + 1; batter.career.ab++; batter.game.ab++;
-      pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
-      addLog(gTag(), `Swings through strike 3. ${batter.name} struck out swinging! ⚡`, 't-k', 'K');
-      showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
-      nextB(bi); recOut(bi); gRenderAll(); return;
-    }
-    addLog(gTag(), `Swings and misses. Strike ${G.strikes}. Count: ${G.balls}-${G.strikes}.`, 't-swing'); gRenderAll(); return;
-  }
+    if (G.strikes >= 3) { punchOut(finalDesc); return; }
+    addLog(gTag(), calledDesc(), 't-info'); gRenderAll();
+  };
 
-  const rawOutcome = rollO(probs);
-  const outcome = tryExtraBase(batter, rawOutcome);
-
-  // 'walk' and 'k' accumulate the count — intercept before the count reset
-  if (outcome === 'walk') {
-    G.balls++; pitcher.game.balls++;
-    addLog(gTag(), `Ball ${G.balls}. Count: ${G.balls}-${G.strikes}.`, 't-info');
-    if (G.balls >= 4) { doWalk(batter, pitcher, bi, fielding); return; }
-    gRenderAll(); return;
-  }
-  if (outcome === 'k') {
-    G.strikes++; pitcher.game.strikes++;
-    if (G.strikes >= 3) {
-      G.balls = 0; G.strikes = 0;
-      batter.career.pa = (batter.career.pa || 0) + 1; batter.career.ab++; batter.game.ab++;
-      pitcher.career.k++; batter.career.k++; pitcher.game.k++; pitcher.game.bf++;
-      addLog(gTag(), `${batter.name} strikes out. ⚡`, 't-k', 'K');
-      showScoreboardMsg('STRIKE OUT!', 1500); pushFeed('K', batter.name);
-      nextB(bi); recOut(bi); gRenderAll(); return;
+  // One roll decides the pitch: HBP, ball, called strike, swinging strike, foul, else it is put in play.
+  let r = Math.random();
+  let outcome = null;
+  if (r < PITCH.hbp) outcome = 'hbp';
+  else {
+    r -= PITCH.hbp;
+    if (r < rates.ball) {
+      G.balls++; pitcher.game.balls++;
+      addLog(gTag(), `Ball ${G.balls}. Count: ${G.balls}-${G.strikes}.`, 't-info');
+      if (G.balls >= 4) { doWalk(batter, pitcher, bi, fielding); return; }
+      gRenderAll(); return;
     }
-    addLog(gTag(), `Strike ${G.strikes}. Count: ${G.balls}-${G.strikes}.`, 't-info');
-    gRenderAll(); return;
+    r -= rates.ball;
+    if (r < rates.called) { addStrike(() => `Called strike ${G.strikes}. Count: ${G.balls}-${G.strikes}.`, `Called strike 3. ${batter.name} struck out looking! ⚡`); return; }
+    r -= rates.called;
+    if (r < rates.swing) { addStrike(() => `Swings and misses. Strike ${G.strikes}. Count: ${G.balls}-${G.strikes}.`, `Swings through strike 3. ${batter.name} struck out swinging! ⚡`); return; }
+    r -= rates.swing;
+    if (r < PITCH.foul) {
+      if (G.strikes < 2) { G.strikes++; pitcher.game.strikes++; }
+      addLog(gTag(), `Foul ball. Count: ${G.balls}-${G.strikes}.`, 't-info'); gRenderAll(); return;
+    }
+    outcome = tryExtraBase(batter, rollO(probs));
   }
 
   G.balls = 0; G.strikes = 0;
@@ -724,9 +709,9 @@ function simPitch() {
       }
       const t = ['lines out to short','ropes one to second — OUT','lasers one to center — caught!']; addLog(gTag(), `${batter.name} ${t[ri(t.length)]}.`, 't-out', 'LO'); showScoreboardMsg('LINE OUT', 1200); pushFeed('LO', batter.name); nextB(bi); recOut(bi); break;
     }
-    case 'hbp': { batter.career.bb++; batter.career.pa++; pitcher.game.bb++; pitcher.game.balls++; pitcher.career.hbp++; pitcher.game.hbp++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit', 'HBP'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbH); nextB(bi); break; }
+    case 'hbp': { batter.career.hbp = (batter.career.hbp || 0) + 1; pitcher.game.balls++; pitcher.career.hbp++; pitcher.game.hbp++; addLog(gTag(), `${batter.name} hit by pitch.`, 't-hit', 'HBP'); showScoreboardMsg('HIT BY PITCH', 1800); pushFeed('HBP', batter.name); const rbH = G.runs[bi]; advR(1, bi, false, true, batter); addRunLog(bi, G.runs[bi] - rbH); nextB(bi); break; }
     case 'single': {
-      G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.career.pa++; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++;
+      G.hits[bi]++; batter.career.ab++; batter.career.h++; batter.game.ab++; batter.game.h++; pitcher.game.hits++; pitcher.career.h++; pitcher.game.strikes++;
       addLog(gTag(), `${batter.name} singles!`, 't-hit', '1B'); showScoreboardMsg('SINGLE!', 1500); pushFeed('1B', batter.name);
       // 2 outs + runner on 2nd: scoring chance depends on runner speed
       if (G.outs === 2 && G.bases[1]) {
@@ -1423,16 +1408,30 @@ function tryExtraBase(batter, outcome) {
   return outcome;
 }
 
+// Per-pitch rates. Tuned so an average batter against an average pitcher lands on the 2026 MLB per-PA
+// rates in MLB (walk 8.9%, K 22.2%, HBP 1.15%). A walk needs 4 balls before 3 strikes, so the ball rate
+// per pitch is far above the walk rate per PA; the exponent keeps the Patience/Control spread realistic
+// (about 4% walks at the bottom of the scale, about 20% at the top).
+const PITCH = { ball:.355, ballExp:.4, calledK:.16, swingK:.108, foul:.17, hbp:.0035 };
+
+function pitchRates(b, p, fatigue) {
+  const bbBlend = cl(b.bbPct * .6 + p.bbPct * (1 + fatigue * 0.6) * .4, .04, .18);
+  const kBlend  = cl(b.kPct  * .6 + p.kPct  * (1 - fatigue * 0.4) * .4, .10, .38);
+  return {
+    ball:   cl(PITCH.ball * Math.pow(bbBlend / MLB.walk, PITCH.ballExp), .10, .55),
+    called: PITCH.calledK * kBlend / MLB.k,
+    swing:  PITCH.swingK  * kBlend / MLB.k,
+  };
+}
+
 function calcProbs(b, p) {
   const fatigue = getFatigue(p);
-  const k  = cl(b.kPct * .6  + p.kPct  * (1 - fatigue * 0.4) * .4, .10, .38);
-  const bb = cl(b.bbPct * .6 + p.bbPct * (1 + fatigue * 0.6) * .4, .04, .18);
   const go = cl(b.goPct + (p.goD || 0) * (1 - fatigue * 0.5) * .4, .12, .32);
   // Contact drives hit rate; speed adds a small infield-single bonus; power splits hit types.
   const speedFactor  = cl((b.sbRate || 0.075) / 0.15, 0, 1);
   const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
-  const contactRate  = cl(0.240 - (b.kPct || 0.20) * 0.240, 0.130, 0.230);
-  const hitRate      = cl(contactRate + speedBonus, 0.120, 0.250);
+  const contactRate  = cl(0.260 - (b.kPct || 0.20) * 0.260, 0.130, 0.245);
+  const hitRate      = cl(contactRate + speedBonus, 0.120, 0.265);
   const adjSinglePct = (b.singlePct || 0) + Math.max(0, speedBonus); // speed hits are singles
   const rawHitSum    = adjSinglePct + (b.doublePct || 0) + (b.triplePct || 0) + (b.hrPct || 0);
   const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
@@ -1440,7 +1439,7 @@ function calcProbs(b, p) {
   const dbl    = hitRate * ((b.doublePct  || 0)    / hitDenom);
   const triple = hitRate * ((b.triplePct  || 0)    / hitDenom);
   const hr     = hitRate * ((b.hrPct      || 0)    / hitDenom);
-  const raw = { k, go, fo: b.foPct, lo: MLB.lo, walk: bb, hbp: MLB.hbp, single, dbl, triple, hr };
+  const raw = { go, fo: b.foPct, lo: MLB.lo, single, dbl, triple, hr };
   const tot = Object.values(raw).reduce((s, v) => s + v, 0);
   const out = {}; for (const key in raw) out[key] = raw[key] / tot; return out;
 }

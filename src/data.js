@@ -1,8 +1,33 @@
 // ====================================================================
-// MLB-CALIBRATED OUTCOME DATA (2024 season averages per PA)
-// Source: FanGraphs / Baseball Reference 2024
+// MLB-CALIBRATED OUTCOME DATA (2026 season averages per PA)
+// Source: Baseball Reference 2026 (walk, K, HBP); other rows are 2024 FanGraphs
 // ====================================================================
-export const MLB = { k:.226, go:.203, fo:.165, lo:.056, walk:.081, hbp:.018, single:.149, double:.051, triple:.004, hr:.030 };
+export const MLB = { k:.222, go:.203, fo:.165, lo:.056, walk:.089, hbp:.0115, single:.149, double:.051, triple:.004, hr:.030 };
+
+// ====================================================================
+// RATING SCALE (0-100) <-> per-PA probability
+// 50 is the 2026 league average; 0 and 100 are the ends of the range. Each rating is a straight line
+// from its worst end to the average and another from the average to its best end, so an average-rated
+// player produces exactly the league rate. Contact and Control run downward (a better rating means a
+// lower strikeout or walk rate).
+// ====================================================================
+const RATING_SCALE = {
+  contact:   [.40, MLB.k,    .10],   // batter K%
+  patience:  [.04, MLB.walk, .18],   // batter BB%
+  strikeout: [.14, MLB.k,    .35],   // pitcher K%
+  control:   [.14, MLB.walk, .04],   // pitcher BB%
+  power:     [.004, .0325, .10],     // batter HR weight; a 50 hits about 3.0% of PA as home runs, a 100 about 7%
+};
+export function ratingToPct(kind, v) {
+  const [lo, mid, hi] = RATING_SCALE[kind];
+  const r = Math.max(0, Math.min(100, v));
+  return r <= 50 ? lo + (mid - lo) * r / 50 : mid + (hi - mid) * (r - 50) / 50;
+}
+export function pctToRating(kind, x) {
+  const [lo, mid, hi] = RATING_SCALE[kind];
+  const r = (x - lo) * (x - mid) <= 0 ? 50 * (x - lo) / (mid - lo) : 50 + 50 * (x - mid) / (hi - mid);
+  return Math.max(0, Math.min(100, Math.round(r)));
+}
 
 export const B_ARCHS = [
   {l:'Power',    avgD:-.020,kD:+.06,bbD:+.01,hrD:+.015,goD:-.02,trD:0},
@@ -27,23 +52,23 @@ export const P_ARCHS = [
 // ====================================================================
 export const LINEUP_PROFILES = [
   // 0 Leadoff (CF)  — fast, gets on base
-  { label:'Leadoff',   avg:.272, kPct:.178, bbPct:.108, hrPct:.010, sbRate:.128, doublePct:.042, triplePct:.008, goPct:.212, foPct:.158 },
+  { label:'Leadoff',   avg:.272, kPct:.178, bbPct:.108, hrPct:.0115, sbRate:.128, doublePct:.042, triplePct:.008, goPct:.212, foPct:.158 },
   // 1 2nd (SS)       — best contact, low K
-  { label:'Contact',   avg:.282, kPct:.162, bbPct:.094, hrPct:.015, sbRate:.072, doublePct:.048, triplePct:.004, goPct:.222, foPct:.162 },
+  { label:'Contact',   avg:.282, kPct:.162, bbPct:.094, hrPct:.0172, sbRate:.072, doublePct:.048, triplePct:.004, goPct:.222, foPct:.162 },
   // 2 3rd (RF)       — power + contact
-  { label:'3-Hole',    avg:.274, kPct:.212, bbPct:.092, hrPct:.038, sbRate:.048, doublePct:.058, triplePct:.003, goPct:.185, foPct:.175 },
+  { label:'3-Hole',    avg:.274, kPct:.212, bbPct:.092, hrPct:.0437, sbRate:.048, doublePct:.058, triplePct:.003, goPct:.185, foPct:.175 },
   // 3 Cleanup (1B)   — best power + contact combined
-  { label:'Cleanup',   avg:.278, kPct:.222, bbPct:.102, hrPct:.058, sbRate:.028, doublePct:.062, triplePct:.002, goPct:.175, foPct:.182 },
+  { label:'Cleanup',   avg:.278, kPct:.222, bbPct:.102, hrPct:.0667, sbRate:.028, doublePct:.062, triplePct:.002, goPct:.175, foPct:.182 },
   // 4 5th (3B)       — power hitter
-  { label:'Power',     avg:.256, kPct:.252, bbPct:.088, hrPct:.050, sbRate:.030, doublePct:.056, triplePct:.002, goPct:.178, foPct:.185 },
+  { label:'Power',     avg:.256, kPct:.252, bbPct:.088, hrPct:.0575, sbRate:.030, doublePct:.056, triplePct:.002, goPct:.178, foPct:.185 },
   // 5 6th (LF)       — balanced, contact lean
-  { label:'Balanced+', avg:.264, kPct:.206, bbPct:.083, hrPct:.028, sbRate:.058, doublePct:.050, triplePct:.003, goPct:.202, foPct:.165 },
+  { label:'Balanced+', avg:.264, kPct:.206, bbPct:.083, hrPct:.0322, sbRate:.058, doublePct:.050, triplePct:.003, goPct:.202, foPct:.165 },
   // 6 7th (2B)       — balanced
-  { label:'Balanced',  avg:.254, kPct:.220, bbPct:.076, hrPct:.022, sbRate:.054, doublePct:.046, triplePct:.003, goPct:.206, foPct:.165 },
+  { label:'Balanced',  avg:.254, kPct:.220, bbPct:.076, hrPct:.0253, sbRate:.054, doublePct:.046, triplePct:.003, goPct:.206, foPct:.165 },
   // 7 8th (C)        — below average
-  { label:'Reserve',   avg:.238, kPct:.236, bbPct:.066, hrPct:.018, sbRate:.038, doublePct:.042, triplePct:.002, goPct:.212, foPct:.165 },
+  { label:'Reserve',   avg:.238, kPct:.236, bbPct:.066, hrPct:.0207, sbRate:.038, doublePct:.042, triplePct:.002, goPct:.212, foPct:.165 },
   // 8 9th (DH)       — weakest slot
-  { label:'Bottom',    avg:.228, kPct:.250, bbPct:.060, hrPct:.015, sbRate:.030, doublePct:.038, triplePct:.002, goPct:.218, foPct:.165 },
+  { label:'Bottom',    avg:.228, kPct:.250, bbPct:.060, hrPct:.0172, sbRate:.030, doublePct:.038, triplePct:.002, goPct:.218, foPct:.165 },
 ];
 
 export const PITCHER_PROFILES = [
