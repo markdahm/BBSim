@@ -141,7 +141,7 @@ export function startGame(awayIdArg, homeIdArg) {
   awayTeamId = awayId; homeTeamId = homeId;
   const away = LEAGUE.teams.find(t => t.id === awayId);
   const home = LEAGUE.teams.find(t => t.id === homeId);
-  clearTimeout(autoT);
+  if (!autoChaining) stopAutoLoop();   // a manual start takes over from any auto-play loop
 
   G = {
     running: true,
@@ -607,12 +607,14 @@ function showScoreboardMsg(text, ms = 1800, color = null) {
 
 export function gSinglePitch() {
   if (G.over) return;
+  stopAutoLoop();
   simPitch();
 }
 
 // ── Pitch simulation ──
 export function gPitch() {
   if (G.over) return;
+  stopAutoLoop();
   const halfBefore = G.half, inningBefore = G.inning, batterBefore = G.lineupIdx[G.half];
   simPitch();
   const batterChanged = G.lineupIdx[halfBefore] !== batterBefore || G.half !== halfBefore || G.inning !== inningBefore || G.over;
@@ -1143,6 +1145,8 @@ function endGame() {
     updateSchedProgressStrip();
     if (nextSchedIdx(LEAGUE.schedule) === -1) {
       saveLeague();
+      G.running = false;            // the season is over; nothing is left to auto-play
+      autoMultiRemaining = 0;
       window.nav('playoffs');
       return;
     }
@@ -1263,33 +1267,64 @@ function endGame() {
   }
 }
 
-export function gAuto() {
-  if (G.over) return;
-  const si = G.inning, sh = G.half;
-  function step() {
-    if (G.over) return;
-    if (G.inning !== si || G.half !== sh) return;
-    const batBefore = G.lineupIdx[G.half];
-    simPitch();
-    const delay = pendingDelay > 0 ? pendingDelay : pitchDelay; pendingDelay = 0;
-    if (!G.over && G.inning === si && G.half === sh && G.lineupIdx[G.half] !== batBefore) tryAutoSteal(G.half);
-    if (!G.over && G.inning === si && G.half === sh) autoT = setTimeout(step, delay);
-  }
-  step();
+// ── Auto-play driver ──
+// One loop drives every auto mode (half inning, game, many games, playoff series). Each tick runs
+// pitches until the time budget is spent or the scope ends, then yields to the browser; with the
+// animation showing it runs one pitch per tick with the chosen delay. A game that ends chains into
+// the next one (endGame -> autoMultiNext / playoffAutoNext -> startGame) inside the same tick, so a
+// season costs no per-game timer wait. Exactly one loop exists at a time: startAuto and any manual
+// start retire the old loop by bumping autoGen, and a retired tick that fires later does nothing.
+// (Before this, every finished game left its old loop running against the new game.)
+const AUTO_BUDGET_MS = 12;
+let autoGen = 0;
+let autoScope = null;       // 'half' | 'game' | null
+let autoScopeInning = 0, autoScopeHalf = 0;
+let autoChaining = false;   // true while endGame starts the next auto-played game
+
+function stopAutoLoop() {
+  autoGen++;
+  autoScope = null;
+  if (autoT) { clearTimeout(autoT); autoT = null; }
 }
 
-export function gAutoGame() {
-  if (G.over) return;
-  function step() {
-    if (G.over) return;
-    const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
-    simPitch();
-    const delay = pendingDelay > 0 ? pendingDelay : pitchDelay; pendingDelay = 0;
-    if (!G.over && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) tryAutoSteal(G.half);
-    if (!G.over) autoT = setTimeout(step, delay);
-  }
-  step();
+function startAuto(scope) {
+  stopAutoLoop();
+  if (!G.running || G.over) return;
+  autoScope = scope; autoScopeInning = G.inning; autoScopeHalf = G.half;
+  autoTick(autoGen);
 }
+
+// endGame chains into the next game through here, so the running tick keeps going
+function chainedStart(awayId, homeId) {
+  autoChaining = true;
+  try { startGame(awayId, homeId); } finally { autoChaining = false; }
+}
+
+function autoPitch() {
+  const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
+  simPitch();
+  if (!G.over && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) tryAutoSteal(G.half);
+}
+
+function autoTick(gen) {
+  if (gen !== autoGen) return;
+  const scope = autoScope;
+  const inScope = () => G.running && !G.over && (scope === 'game' || (G.inning === autoScopeInning && G.half === autoScopeHalf));
+  if (!inScope()) { autoScope = null; return; }
+  const quiet = effHideAnim();
+  const deadline = performance.now() + AUTO_BUDGET_MS;
+  do {
+    autoPitch();
+    if (gen !== autoGen) return;   // a manual action took over mid-tick
+  } while (quiet && inScope() && performance.now() < deadline);
+  if (!inScope()) { autoScope = null; return; }
+  const delay = quiet ? 0 : (pendingDelay > 0 ? pendingDelay : pitchDelay);
+  pendingDelay = 0;
+  autoT = setTimeout(() => autoTick(gen), delay);
+}
+
+export function gAuto()     { startAuto('half'); }
+export function gAutoGame() { startAuto('game'); }
 
 
 // Returns the index of the next game to auto-play.
@@ -1331,6 +1366,7 @@ export function gAutoMulti() {
   if (!n || n < 1) return;
   autoMultiRemaining = Math.min(n, unplayed);
   autoMultiNext();
+  startAuto('game');
 }
 
 export function gAutoAll() {
@@ -1339,6 +1375,7 @@ export function gAutoAll() {
   if (unplayed === 0) { alert('No unplayed games remaining.'); return; }
   autoMultiRemaining = unplayed;
   autoMultiNext();
+  startAuto('game');
 }
 
 function autoMultiNext() {
@@ -1354,15 +1391,7 @@ function autoMultiNext() {
   autoMultiRemaining--;
   schedGameIdx = idx;
   simMode = 'schedule';
-  startGame(sched[idx].awayId, sched[idx].homeId);
-  function step() {
-    if (G.over) return;  // endGame() will call autoMultiNext()
-    const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
-    simPitch();
-    if (!G.over && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) tryAutoSteal(G.half);
-    if (!G.over) setTimeout(step, 0);
-  }
-  step();
+  chainedStart(sched[idx].awayId, sched[idx].homeId);
 }
 
 export function gToggleHideAnimation() {
@@ -1614,15 +1643,7 @@ function playoffAutoNext() {
   const gameNum = series.games.length + 1;
   const { homeId, awayId } = getGameHomeAway(series, gameNum);
   simMode = 'playoffs';
-  startGame(awayId, homeId);
-  function step() {
-    if (G.over) return;
-    const halfBefore = G.half, batBefore = G.lineupIdx[G.half];
-    simPitch();
-    if (!G.over && (G.half !== halfBefore || G.lineupIdx[G.half] !== batBefore)) tryAutoSteal(G.half);
-    if (!G.over) setTimeout(step, 0);
-  }
-  step();
+  chainedStart(awayId, homeId);
 }
 
 export function playoffPlayNext(seriesIdx) {
@@ -1655,6 +1676,7 @@ export function playoffAutoSeries(seriesIdx) {
   saveLeague();
   window.nav('playoffs');
   playoffAutoNext();
+  startAuto('game');
 }
 
 export function playoffAutoRound(roundKey) {
@@ -1670,6 +1692,7 @@ export function playoffAutoRound(roundKey) {
   saveLeague();
   window.nav('playoffs');
   playoffAutoNext();
+  startAuto('game');
 }
 
 export function playoffAutoAll() {
@@ -1685,4 +1708,5 @@ export function playoffAutoAll() {
   saveLeague();
   window.nav('playoffs');
   playoffAutoNext();
+  startAuto('game');
 }
