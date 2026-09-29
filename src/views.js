@@ -1549,6 +1549,9 @@ export function advanceSeason() {
   LEAGUE.seasonName = null;
   LEAGUE.gamesPlayed = 0;
   LEAGUE._schedFilter = '';
+  // The new season replays the same schedule from game 1, and last season's playoffs are over.
+  (LEAGUE.schedule || []).forEach(g => { g.played = false; g.awayScore = null; g.homeScore = null; });
+  LEAGUE.playoffs = null;
   saveLeague();
   renderHome();
 }

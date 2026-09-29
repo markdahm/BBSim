@@ -76,7 +76,7 @@ export function renderSimulate() {
       if (sched.length === 0) {
         picker = `<div style="padding:20px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">No schedule found. Build one on the Schedule page.</div>`;
       } else if (nextIdx === -1) {
-        picker = `${schedStrip}${schedProgressStrip()}<div style="padding:12px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">All ${sched.length} games have been played!</div>`;
+        picker = `${schedStrip}${schedProgressStrip()}<div style="padding:12px 0;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--muted)">All ${sched.length} games have been played! Use Advance Season to start the next one, or Recycle Schedule on the Schedule page to replay this one.</div>`;
       } else {
         const g    = sched[nextIdx];
         const away = LEAGUE.teams.find(t => t.id === g.awayId);
