@@ -1,5 +1,5 @@
 import { MLB } from './data.js';
-import { ri, cl, battingAvg, setText, mkEl, teamLogoHtml } from './utils.js';
+import { ri, cl, battingAvg, setText, mkEl, teamLogoHtml, ballInPlayMix } from './utils.js';
 import { LEAGUE, saveLeague, leagueIsPlayable, lineupPos } from './league.js';
 
 // ====================================================================
@@ -1481,24 +1481,11 @@ function pitchRates(b, p, fatigue) {
   };
 }
 
+// Shares of a ball in play for this batter against this pitcher: the batter's mix (utils.ballInPlayMix,
+// shared with the card's projection) with the pitcher's ground-ball lean, eased by fatigue.
 function calcProbs(b, p) {
   const fatigue = getFatigue(p);
-  const go = cl(b.goPct + (p.goD || 0) * (1 - fatigue * 0.5) * .4, .12, .32);
-  // Contact drives hit rate; speed adds a small infield-single bonus; power splits hit types.
-  const speedFactor  = cl((b.sbRate || 0.075) / 0.15, 0, 1);
-  const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
-  const contactRate  = cl(0.260 - (b.kPct || 0.20) * 0.260, 0.130, 0.245);
-  const hitRate      = cl(contactRate + speedBonus, 0.120, 0.265);
-  const adjSinglePct = (b.singlePct || 0) + Math.max(0, speedBonus); // speed hits are singles
-  const rawHitSum    = adjSinglePct + (b.doublePct || 0) + (b.triplePct || 0) + (b.hrPct || 0);
-  const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
-  const single = hitRate * (adjSinglePct           / hitDenom);
-  const dbl    = hitRate * ((b.doublePct  || 0)    / hitDenom);
-  const triple = hitRate * ((b.triplePct  || 0)    / hitDenom);
-  const hr     = hitRate * ((b.hrPct      || 0)    / hitDenom);
-  const raw = { go, fo: b.foPct, lo: MLB.lo, single, dbl, triple, hr };
-  const tot = Object.values(raw).reduce((s, v) => s + v, 0);
-  const out = {}; for (const key in raw) out[key] = raw[key] / tot; return out;
+  return ballInPlayMix(b, (p.goD || 0) * (1 - fatigue * 0.5) * .4);
 }
 
 function rollO(probs) { let r = Math.random(), cum = 0; for (const [k, p] of Object.entries(probs)) { cum += p; if (r < cum) return k; } return 'go'; }

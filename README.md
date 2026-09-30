@@ -107,22 +107,20 @@ GO% = clamp( batter.goPct        +  pitcher.goD   × (1 − fatigue × 0.50) × 
 - Batter rate contributes **60%**; pitcher rate contributes **40%**.
 - Fatigue reduces pitcher strikeout contribution and *increases* walk contribution.
 
-#### Hit rate
+#### Ball in play (`ballInPlayMix` in `utils.js`, `HIT_MODEL` in `data.js`)
+
+Once a ball is put in play it is a home run, a hit that falls in, or an out. The two kinds of hit are separate terms:
 
 ```
-contactRate = clamp( 0.240 − batter.kPct × 0.240,  0.130, 0.230 )
-speedFactor = clamp( batter.sbRate / 0.15,  0, 1 )
-speedBonus  = (speedFactor − 0.5) × 0.020          // ±0.010 at extremes
-hitRate     = clamp( contactRate + speedBonus,       0.120, 0.250 )
+hr    = clamp( batter.hrPct × 1.25,  0.005, 0.25 )                       // share of balls in play, driven by Power
+babip = clamp( 0.290 + speed × 0.015 − (batter.kPct − 0.222) × 0.20,  0.18, 0.42 )   // speed runs −1..+1
+hits that fall in = (1 − hr) × babip                                      // split 1B/2B/3B by the batter's weights; speed adds infield singles
+outs  = 1 − hr − hits, split GO/FO/LO by goPct : foPct : 0.056 (the pitcher's ground-ball lean shifts GO)
 ```
 
-Speed (stolen-base rate) adds up to ~+0.010 to hit rate for elite runners.
+Home runs sit **on top of** the hits that fall in, the way hard contact works in real baseball, so a 37-homer bat with an ordinary BABIP hits .258 rather than .210. Contact's main effect on batting average is through strikeouts (fewer balls in play); its effect on BABIP is small. The card's Projected Stats use the same function, so what the card says and what the loop does cannot drift. Constants were measured with `tools/season.mjs` (30 September 2026).
 
-#### Hit-type distribution
-
-Hit types (1B, 2B, 3B, HR) are drawn proportionally from the batter's archetype weights then normalised against `hitRate`. A speed-bonus single is added before normalisation. All final outcomes — K, GO, FO, LO, Walk, HBP, 1B, 2B, 3B, HR — are normalised to sum to 1.0.
-
-League baselines: FO ≈ 0.18, LO = 0.025, HBP = 0.009.
+Speed also upgrades some hits after the fact (`tryExtraBase`): a fast runner turns some singles into doubles and some doubles into triples.
 
 ---
 
@@ -395,7 +393,7 @@ How the nine are chosen, from each player's projected rates against an average p
 3. The DH is the best projected bat left, whatever his listed position. The team stores his id (`team.dhId`) and he shows as **DH** on the roster table, the player card, the Players page and the in-game lineup panel.
 4. Batting order: best projected OBP leads off; the three best OPS remaining bat 2–4 with the most power of them at cleanup; the most power left bats 5th; the rest follow by OPS.
 
-Who plays is part of the calibration. Best-nine lineups hit better than the roster's first nine, so the ratings in `Configs/MLB Rosters 2026 players.csv` carry offsets measured against a full season with DH lineups (30 September 2026: Contact −6, Patience +3, pitcher Strikeout +3 on the 29 September values). Rerun `npm run season` after any change to how the nine are chosen, not only after changes to the pitch model.
+Who plays is part of the calibration. Best-nine lineups hit better than the roster's first nine, so the ratings in `Configs/MLB Rosters 2026 players.csv` carry offsets measured against a full season with DH lineups and the ball-in-play model (30 September 2026: Contact −2, Patience +3, pitcher Strikeout +3 on the 29 September values). Rerun `npm run season` after any change to how the nine are chosen, not only after changes to the pitch model.
 
 Two controls rebuild it by hand: **Set Lineup** on a team's roster table (Batters tab) rebuilds that team, and **League Settings > Set All Lineups** rebuilds every team, for a league file saved before the DH existed. Dragging rows still reorders a lineup and the hand order holds until the next build. Deleting a player from the top nine promotes the tenth row; press Set Lineup to rebuild properly.
 

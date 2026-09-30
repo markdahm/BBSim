@@ -5,6 +5,22 @@
 export const MLB = { k:.222, go:.203, fo:.165, lo:.056, walk:.089, hbp:.0115, single:.149, double:.051, triple:.004, hr:.030 };
 
 // ====================================================================
+// BALL-IN-PLAY MODEL (utils.ballInPlayMix)
+// A ball in play is a home run, a hit that falls in, or an out. Home runs are their own share, driven by
+// Power, ON TOP of the hits that fall in: the batting average on balls in play (BABIP), which sits near
+// the league figure for everyone and moves only a little with Contact and Speed. Power therefore adds
+// hits instead of carving homers out of a fixed pool, the way hard contact does in real baseball; a
+// 37-homer hitter with an ordinary BABIP hits .258, not .210. Tuned with tools/season.mjs so an
+// average roster lands on the 2026 rates (HR 3.0% of PA, AVG .244).
+// ====================================================================
+export const HIT_MODEL = {
+  hrScale:      1.25,   // HR per ball in play = hrPct x this; measured over full seasons so the league hits 3.0% of PA
+  babipBase:    .290,   // BABIP for a league-average bat
+  babipContact: .20,    // BABIP falls this much per unit of K% above the league (a 32% strikeout bat: -.020)
+  babipSpeed:   .015,   // BABIP at the fastest is this much above base, at the slowest this much below
+};
+
+// ====================================================================
 // RATING SCALE (0-100) <-> per-PA probability
 // 50 is the 2026 league average; 0 and 100 are the ends of the range. Each rating is a straight line
 // from its worst end to the average and another from the average to its best end, so an average-rated

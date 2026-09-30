@@ -152,5 +152,29 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
   }
 }
 
+// ── 7. Ball-in-play model: power adds hits, contact and speed move BABIP a little ──
+{
+  const h = await boot();
+  const { ballInPlayMix, projectBatterMix, projectedRates } = h.U;
+  const base = { kPct:.222, bbPct:.089, hrPct:.0325, singlePct:.149, doublePct:.051, triplePct:.004, goPct:.203, foPct:.165, sbRate:.075 };
+  const sum = m => Object.values(m).reduce((a, b) => a + b, 0);
+  const fallIn = m => m.single + m.dbl + m.triple;
+  const avg = ballInPlayMix(base), power = ballInPlayMix({ ...base, hrPct: .08 }), weak = ballInPlayMix({ ...base, hrPct: .01 });
+  check('ball-in-play shares sum to 1', [avg, power, weak].every(m => Math.abs(sum(m) - 1) < 1e-9));
+  check('power adds home runs on top of the hits that fall in', power.hr > avg.hr && avg.hr > weak.hr && Math.abs(fallIn(power) / (1 - power.hr) - fallIn(avg) / (1 - avg.hr)) < 1e-9, `BABIP ${(fallIn(power) / (1 - power.hr)).toFixed(3)} at both`);
+  check('a power bat has more total hits per ball in play, not fewer', fallIn(power) + power.hr > fallIn(avg) + avg.hr);
+  const whiff = ballInPlayMix({ ...base, kPct: .32 }), contact = ballInPlayMix({ ...base, kPct: .12 });
+  const babip = m => fallIn(m) / (1 - m.hr);
+  check('contact moves BABIP a little, in the right direction', babip(contact) > babip(avg) && babip(avg) > babip(whiff) && babip(contact) - babip(whiff) < .05, `${babip(whiff).toFixed(3)} .. ${babip(contact).toFixed(3)}`);
+  const fast = ballInPlayMix({ ...base, sbRate: .15 }), slow = ballInPlayMix({ ...base, sbRate: .02 });
+  check('speed raises BABIP and adds singles', babip(fast) > babip(slow) && fast.single > slow.single && Math.abs(fast.hr - slow.hr) < 1e-9);
+  const lean = ballInPlayMix(base, .04);
+  check('a ground-ball pitcher gets more ground outs, same hits', lean.go > avg.go && Math.abs(fallIn(lean) + lean.hr - fallIn(avg) - avg.hr) < 1e-9);
+  const pm = projectBatterMix(base);
+  check('projection mix sums to 1 and matches the ball-in-play mix', Math.abs(sum(pm) - 1) < 1e-9 && Math.abs(pm.hr / (1 - pm.k - pm.walk - pm.hbp) - avg.hr) < 1e-9);
+  const r = projectedRates(base);
+  check('an average bat projects near the 2026 line', Math.abs(r.avg - .244) < .015 && Math.abs(r.obp - .317) < .015 && Math.abs(r.slg - .400) < .04, `AVG ${r.avg.toFixed(3)} OBP ${r.obp.toFixed(3)} SLG ${r.slg.toFixed(3)}`);
+}
+
 console.log(failed ? `${failed} check(s) failed` : 'engine OK');
 process.exit(failed ? 1 : 0);
