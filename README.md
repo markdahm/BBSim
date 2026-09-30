@@ -20,12 +20,12 @@ ES modules require a server; opening `index.html` directly via `file://` will no
 Two headless tools run the real game code in Node (no browser) and exit non-zero on failure. Run them after any change to the engine, the ratings or the rosters.
 
 ```bash
-npm run check     # tools/check-engine.mjs: load guard, debounced saves, archive refusal, one auto-play loop, steal credit
+npm run check     # tools/check-engine.mjs: load guard, debounced saves, archive refusal, one auto-play loop, steal credit, lineups (8 fielders + DH)
 npm run season    # tools/season.mjs: a full 2,430-game season on Configs/, checked against 2026 MLB rates
 npm test          # both
 ```
 
-`tools/season.mjs path/to/roster.csv` plays another roster; `--no-check` prints without failing. `tools/headless.mjs` is the shared bootstrap (stub DOM, in-memory storage, a timer queue you drain by hand). `tools/stamp.js` writes the build stamp into `index.html`; the pre-commit hook runs it.
+`tools/season.mjs path/to/roster.csv` plays another roster; `--no-check` prints without failing. `tools/headless.mjs` is the shared bootstrap (stub DOM, in-memory storage, a timer queue you drain by hand). `tools/stamp.js` writes the build stamp into `index.html`; the pre-commit hook runs it. `node tools/serve.js 3007` serves the app for a browser with no dependencies (the `bbsim` entry in the OS root `launch.json`).
 
 ---
 
@@ -46,6 +46,7 @@ npm test          # both
    - [Pitcher Archetypes](#pitcher-archetypes)
 4. [Stat Formulas](#stat-formulas)
 5. [Season Management](#season-management)
+   - [Lineup and the designated hitter](#lineup-and-the-designated-hitter)
 6. [Playoff Bracket](#playoff-bracket)
 7. [Season History & Archiving](#season-history--archiving)
 8. [Season Score](#season-score)
@@ -63,7 +64,7 @@ styles.css        — All CSS (dark theme, scoreboard, cards, etc.)
 app.js            — Entry point: imports modules, exposes window globals, boots app
 Artwork/          — Images the page loads: scoreboard.png, diamond.png
 Configs/          — Files you load into the app, plus the default team logos
-  MLB Rosters 2026 players.csv   — per-player 2026 ratings (League Settings > Import Roster)
+  MLB Rosters 2026 players.csv   — per-player 2026 ratings (League Settings > Import Roster); calibrated so a season lands on 2026 rates, see below
   MLB Rosters 2026 adjusted.csv  — older roster with one rating set per position
   2026 MLB Schedule.json         — real 2026 schedule (Schedule > Import Schedule)
   MLB_2026_simulated.json        — a simulated 2026 season with playoffs (Import Roster)
@@ -383,6 +384,21 @@ Schedules are built in a flexible matchup editor. Each row specifies a division 
 | Clear Schedule | Delete all scheduled games |
 | Export Season Archive | Download a season archive JSON at any time |
 
+### Lineup and the designated hitter
+
+Pitchers never bat. A team's nine hitters are the first nine rows of its batter list; the rest are the bench. The lineup is **eight fielders and a designated hitter**: 1 C, 4 IF, 3 OF and a DH. `buildLineup(team)` in `league.js` fills it and runs on every roster import (CSV) and on a generated league; a league JSON file keeps the order it was saved with.
+
+How the nine are chosen, from each player's projected rates against an average pitcher (`projectedRates` in `utils.js`, the same math as the card's Projected Stats):
+
+1. The best projected OPS at each fielding group takes the spot: one catcher, four infielders, three outfielders. The roster CSV's `Position` column is read as a group (`Catcher`, `Infielder`, `Outfielder`, `DH`); generated teams' `C`, `SS`, `1B`, `CF` and so on map the same way, and anything unrecognised counts as an infielder.
+2. A roster short at a group (no catcher, say) fills the gap with its best other fielder. A player listed as DH never fields unless the roster has fewer than eight fielders in all.
+3. The DH is the best projected bat left, whatever his listed position. The team stores his id (`team.dhId`) and he shows as **DH** on the roster table, the player card, the Players page and the in-game lineup panel.
+4. Batting order: best projected OBP leads off; the three best OPS remaining bat 2–4 with the most power of them at cleanup; the most power left bats 5th; the rest follow by OPS.
+
+Who plays is part of the calibration. Best-nine lineups hit better than the roster's first nine, so the ratings in `Configs/MLB Rosters 2026 players.csv` carry offsets measured against a full season with DH lineups (30 September 2026: Contact −6, Patience +3, pitcher Strikeout +3 on the 29 September values). Rerun `npm run season` after any change to how the nine are chosen, not only after changes to the pitch model.
+
+Two controls rebuild it by hand: **Set Lineup** on a team's roster table (Batters tab) rebuilds that team, and **League Settings > Set All Lineups** rebuilds every team, for a league file saved before the DH existed. Dragging rows still reorders a lineup and the hand order holds until the next build. Deleting a player from the top nine promotes the tenth row; press Set Lineup to rebuild properly.
+
 ### Scouting ratings (0–100 scale)
 
 Player cards expose scouting sliders that map to internal probability values:
@@ -564,13 +580,13 @@ Pure constants — no imports, no side effects.
 | `B_ARCHS` | Five batter archetypes with stat deltas applied on top of `MLB` rates at player creation. |
 | `P_ARCHS` | Five pitcher archetypes with ERA and outcome-rate deltas. |
 | `MLB_STRUCTURE` | Two leagues × three divisions × five teams each. Defines fictional team names for a fresh league. |
-| `POSITIONS` | Nine batting positions (`CF`, `SS`, `RF`, …, `DH`). |
+| `POSITIONS` | Nine positions a generated team is created with (`CF`, `SS`, `RF`, …, `DH`); `buildLineup` then orders them. |
 | `FN` / `LN` | Name lists used by `rn()` to generate random player names. |
 | `EMOJIS` | Emoji pool used as default team and player icons. |
 
 ### `src/utils.js`
 
-Stateless helpers. Imports only `FN`/`LN` from `data.js`.
+Stateless helpers. Imports only `FN`/`LN`/`MLB_TEAM_IDS`/`MLB` from `data.js`.
 
 | Export | Description |
 |--------|-------------|
@@ -583,6 +599,8 @@ Stateless helpers. Imports only `FN`/`LN` from `data.js`.
 | `battingAvg(p)` | `H / AB` for a player's career stats. Returns 0 if no at-bats. |
 | `obpCalc(p)` | `(H + BB + HBP) / PA`. |
 | `slgCalc(p)` | Total bases / AB using career doubles, triples, and HR. |
+| `projectBatterMix(p)` | A batter's projected per-PA outcome mix against an average pitcher (K, GO, FO, LO, BB, HBP, 1B, 2B, 3B, HR, summing to 1). The card's Projected Stats round it to counts per 100 PA. |
+| `projectedRates(p)` | Unrounded projected AVG, OBP, SLG, OPS and HR rate from that mix. What `buildLineup` ranks by. |
 
 ### `src/league.js`
 
@@ -594,12 +612,17 @@ All league state and persistence.
 | `initLeague()` | Loads from `localStorage`; falls back to `generateLeague()`. |
 | `generateLeague()` | Creates a fresh 30-team league and saves it. |
 | `saveLeague()` | Writes `LEAGUE` to `localStorage`, splitting logos to separate keys. Shows a brief "✓ Saved" indicator. |
+| `LINEUP_SLOTS` | `{ C: 1, IF: 4, OF: 3 }`: the eight fielding spots; the ninth is the DH. |
+| `fieldGroup(pos)` | `'C'`, `'IF'`, `'OF'` or `'DH'` for a position string as the CSV or a generated team spells it. |
+| `lineupPos(team, b)` | The position to show: `DH` for the player holding the team's DH spot, otherwise his own. |
+| `buildLineup(team)` | Fills slots 1–9 with 1 C, 4 IF, 3 OF and a DH, best projected bats first, in batting order; sets `team.dhId`. Bench order is kept. |
+| `buildAllLineups()` | `buildLineup` for every team, then save. League Settings > Set All Lineups. |
 | `mkBatter(pos)` | Creates a batter at the given position using a random archetype. Returns a player object with zeroed career stats. |
 | `mkPitcher()` | Creates a pitcher using a random `P_ARCHS` archetype. |
 | `importFromCSV(text)` | Parses a CSV/TSV roster. Maps flexible column aliases; scales 0–100 scouting ratings to internal probabilities. |
 | `exportLeague()` | Downloads the current `LEAGUE` as a JSON backup. |
 | `importRosters(input)` | `onchange` handler for the roster file input. Dispatches to CSV or JSON handling. |
-| `allBatters()` | Flat array of every batter league-wide, annotated with `teamName`. |
+| `allBatters()` | Flat array of every batter league-wide, annotated with `teamName`; `pos` is the lineup position (DH for the DH). |
 | `allPitchers()` | Same for pitchers. |
 
 ### `src/views.js`

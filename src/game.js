@@ -1,6 +1,6 @@
 import { MLB } from './data.js';
 import { ri, cl, battingAvg, setText, mkEl, teamLogoHtml } from './utils.js';
-import { LEAGUE, saveLeague, leagueIsPlayable } from './league.js';
+import { LEAGUE, saveLeague, leagueIsPlayable, lineupPos } from './league.js';
 
 // ====================================================================
 // GAME STATE
@@ -552,7 +552,7 @@ function gRenderLineup() {
     const row = document.createElement('div');
     row.className = 'lu-row' + (idx === cur ? ' batting-now' : '');
     row.draggable = true;
-    row.innerHTML = `<span class="lu-num">${idx+1}</span><div class="lu-nw"><div class="lu-pn">${b.name} <span class="lu-pos">${b.pos}</span></div><div class="lu-ps">.${Math.round(battingAvg(b)*1000).toString().padStart(3,'0')} · K${(b.kPct*100).toFixed(0)}%</div></div><span style="color:#ccc;font-size:0.8rem">⠿</span>`;
+    row.innerHTML = `<span class="lu-num">${idx+1}</span><div class="lu-nw"><div class="lu-pn">${b.name} <span class="lu-pos">${lineupPos(team, b)}</span></div><div class="lu-ps">.${Math.round(battingAvg(b)*1000).toString().padStart(3,'0')} · K${(b.kPct*100).toFixed(0)}%</div></div><span style="color:#ccc;font-size:0.8rem">⠿</span>`;
     row.addEventListener('dragstart', e => { dragSrc2 = idx; row.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
     row.addEventListener('dragend',   () => row.classList.remove('dragging'));
     row.addEventListener('dragover',  e => { e.preventDefault(); row.classList.add('drag-over'); });

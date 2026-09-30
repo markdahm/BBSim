@@ -77,7 +77,7 @@ export const LINEUP_PROFILES = [
   { label:'Balanced',  avg:.254, kPct:.220, bbPct:.076, hrPct:.0253, sbRate:.054, doublePct:.046, triplePct:.003, goPct:.206, foPct:.165 },
   // 7 8th (C)        — below average
   { label:'Reserve',   avg:.238, kPct:.236, bbPct:.066, hrPct:.0207, sbRate:.038, doublePct:.042, triplePct:.002, goPct:.212, foPct:.165 },
-  // 8 9th (DH)       — weakest slot
+  // 8 9th            — weakest slot (the template's DH; buildLineup places a real team's DH by his bat)
   { label:'Bottom',    avg:.228, kPct:.250, bbPct:.060, hrPct:.0172, sbRate:.030, doublePct:.038, triplePct:.002, goPct:.218, foPct:.165 },
 ];
 

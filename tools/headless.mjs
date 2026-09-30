@@ -2,7 +2,7 @@
 // localStorage, and a timer queue you drain by hand so auto-play loops can be counted and stepped.
 // Used by tools/season.mjs and tools/check-engine.mjs.
 //
-//   const h = await boot();                 // h.L league.js, h.V views.js, h.G game.js
+//   const h = await boot();                 // h.L league.js, h.V views.js, h.G game.js, h.U utils.js
 //   h.importRoster(); h.importSchedule();   // Configs/ files by default
 //   h.G.gAutoAll(); h.drain();              // run every pending timer until the queue is empty
 import fs from 'fs';
@@ -58,6 +58,7 @@ export async function boot({ limitMs = 170000 } = {}) {
   const L = await import(path.join(ROOT, 'src', 'league.js'));
   const V = await import(path.join(ROOT, 'src', 'views.js'));
   const G = await import(path.join(ROOT, 'src', 'game.js'));
+  const U = await import(path.join(ROOT, 'src', 'utils.js'));
   L.initLeague();
 
   const fileInput = (name, text) => ({ files: [{ name, text }], value: '' });
@@ -66,7 +67,7 @@ export async function boot({ limitMs = 170000 } = {}) {
   const importLeague = (file) => { L.importRosters(fileInput(path.basename(file), fs.readFileSync(file, 'utf8'))); drain(); };
   const pitchCount = () => G.G.away.pitchers.concat(G.G.home.pitchers).reduce((s, p) => s + p.game.pitches, 0);
 
-  return { L, V, G, store, writes, alerts, drain, pendingTicks, stats, importRoster, importSchedule, importLeague, pitchCount, fileInput };
+  return { L, V, G, U, store, writes, alerts, drain, pendingTicks, stats, importRoster, importSchedule, importLeague, pitchCount, fileInput };
 }
 
 export function leagueTotals(L) {

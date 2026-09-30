@@ -1,5 +1,5 @@
 import { MLB_STRUCTURE, POSITIONS, EMOJIS, MLB, B_ARCHS, P_ARCHS, LINEUP_PROFILES, PITCHER_PROFILES, ratingToPct } from './data.js';
-import { ri, rn, rand, cl, randomColor } from './utils.js';
+import { ri, rn, rand, cl, randomColor, projectedRates } from './utils.js';
 
 // ====================================================================
 // LEAGUE STATE (persisted in localStorage)
@@ -79,6 +79,7 @@ export function generateLeague() {
       }
     }
   }
+  LEAGUE.teams.forEach(buildLineup);
   initAvgRoster();
   saveLeague();
 }
@@ -206,6 +207,71 @@ export function applyAvgRosterToLeague() {
       p.goD = src.goD; p.arch = src.arch;
     }
   }
+  saveLeague();
+}
+
+// ====================================================================
+// LINEUP: eight fielders and a designated hitter
+// ====================================================================
+// The nine hitters are the first nine of team.batters (the engine reads slots 0-8; the rest are the
+// bench). buildLineup fills them as 1 C, 4 IF, 3 OF and a DH, best projected bats first, and stores
+// the DH's id on the team so he shows as DH wherever a position is drawn. A player the roster lists
+// as DH can only take the DH spot. Drag-to-reorder still works and stays until the next build.
+export const LINEUP_SLOTS = { C: 1, IF: 4, OF: 3 };   // plus one DH; nine in all
+
+// Fielding group of a position string, as the roster CSV (Catcher, Infielder, Outfielder, DH) or the
+// generated teams (C, SS, 1B, CF, ...) spell it. Anything unrecognised is treated as an infielder.
+export function fieldGroup(pos) {
+  const s = String(pos || '').trim().toUpperCase();
+  if (s === 'DH') return 'DH';
+  if (s === 'C' || s === 'CATCHER') return 'C';
+  if (/^(LF|CF|RF|OF|OUTFIELDER)$/.test(s)) return 'OF';
+  return 'IF';
+}
+
+// The position to show for a batter on this team: DH for the player holding the DH spot.
+export function lineupPos(team, b) {
+  return team && team.dhId != null && team.dhId === b.id ? 'DH' : b.pos;
+}
+
+// Batting order for nine hitters from their projected rates: best on-base leads off, the three best
+// overall bat 2-4 with the most power of them at cleanup, the most power left bats 5th, then the
+// rest by OPS.
+function battingOrder(nine, rateOf) {
+  const left = [...nine];
+  const take = key => { left.sort((a, b) => rateOf(b)[key] - rateOf(a)[key]); return left.shift(); };
+  const lead = take('obp');
+  const heart = []; while (heart.length < 3 && left.length) heart.push(take('ops'));
+  heart.sort((a, b) => rateOf(b).hr - rateOf(a).hr);
+  const cleanup = heart.shift();
+  heart.sort((a, b) => rateOf(b).ops - rateOf(a).ops);
+  const fifth = left.length ? take('hr') : null;
+  left.sort((a, b) => rateOf(b).ops - rateOf(a).ops);
+  return [lead, ...heart, cleanup, fifth, ...left].filter(Boolean);
+}
+
+export function buildLineup(team) {
+  const rates = new Map(team.batters.map(b => [b.id, projectedRates(b)]));
+  const rateOf = b => rates.get(b.id);
+  const byOps = [...team.batters].sort((a, b) => rateOf(b).ops - rateOf(a).ops);
+  const taken = new Set();
+  const fielders = [];
+  const pick = b => { taken.add(b.id); fielders.push(b); };
+  for (const [grp, n] of Object.entries(LINEUP_SLOTS)) byOps.filter(b => fieldGroup(b.pos) === grp).slice(0, n).forEach(pick);
+  // A roster short at a position fills the gap with its best other fielder; a listed DH cannot field...
+  for (const b of byOps) { if (fielders.length >= 8) break; if (!taken.has(b.id) && fieldGroup(b.pos) !== 'DH') pick(b); }
+  // ...unless the whole roster has fewer than eight fielders, when a slot must still be filled.
+  for (const b of byOps) { if (fielders.length >= 8) break; if (!taken.has(b.id)) pick(b); }
+  const dh = byOps.find(b => !taken.has(b.id)) || null;
+  const nine = dh ? [...fielders, dh] : fielders;
+  const inNine = new Set(nine.map(b => b.id));
+  team.batters = [...battingOrder(nine, rateOf), ...team.batters.filter(b => !inNine.has(b.id))];
+  team.dhId = dh ? dh.id : null;
+  return team;
+}
+
+export function buildAllLineups() {
+  for (const team of LEAGUE.teams) buildLineup(team);
   saveLeague();
 }
 
@@ -460,13 +526,13 @@ export function importFromCSV(text) {
       pitchers[pitchers.length - 1].pos = 'CL';
     }
 
-    teams.push({
+    teams.push(buildLineup({
       id: teamId++, name: teamName, city, nickname,
       league, division,
       color: randomColor(), emoji: EMOJIS[ri(EMOJIS.length)],
       w: 0, l: 0, runsFor: 0, runsAgainst: 0,
       batters, pitchers, activePitcher: 0, seasonLog: [],
-    });
+    }));
   }
 
   LEAGUE = { name: 'MLB 2026', season: 2026, teams, gamesPlayed: 0 };
@@ -530,5 +596,5 @@ export function importRosters(input) {
 // ====================================================================
 // LEAGUE-WIDE PLAYER ACCESSORS
 // ====================================================================
-export function allBatters()  { return LEAGUE.teams.flatMap(t => t.batters.map(b => ({...b, teamName: t.name}))); }
+export function allBatters()  { return LEAGUE.teams.flatMap(t => t.batters.map(b => ({...b, pos: lineupPos(t, b), teamName: t.name}))); }
 export function allPitchers() { return LEAGUE.teams.flatMap(t => t.pitchers.map(p => ({...p, teamName: t.name}))); }

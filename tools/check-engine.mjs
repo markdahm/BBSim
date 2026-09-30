@@ -99,5 +99,58 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
   check('steals credited only to runners on base', wrong === 0 && attempts > 0, `${attempts} attempts, ${wrong} wrong`);
 }
 
+// ── 6. Every lineup is eight fielders and a DH, best bats first ──
+{
+  const h = await boot();
+  h.importRoster();
+  const { fieldGroup, buildLineup, lineupPos } = h.L;
+  const rateOf = b => h.U.projectedRates(b);
+  const shape = t => { const g = { C:0, IF:0, OF:0, DH:0 }; t.batters.slice(0, 9).forEach(b => g[b.id === t.dhId ? 'DH' : fieldGroup(b.pos)]++); return g; };
+  const okShape = g => g.C === 1 && g.IF === 4 && g.OF === 3 && g.DH === 1;
+  // What a roster can field: 1 C, 4 IF, 3 OF where it has them, the gaps filled by other fielders, always eight plus a DH
+  const okFor = t => { const n = t.batters.reduce((a, b) => { a[fieldGroup(b.pos)]++; return a; }, { C:0, IF:0, OF:0, DH:0 }), g = shape(t);
+    return g.DH === 1 && g.C + g.IF + g.OF === 8 && g.C >= Math.min(1, n.C) && g.IF >= Math.min(4, n.IF) && g.OF >= Math.min(3, n.OF); };
+  const T = h.L.LEAGUE.teams;
+  check('import: every team fields 1 C, 4 IF, 3 OF and a DH', T.every(t => okShape(shape(t))), T.filter(t => !okShape(shape(t))).map(t => `${t.name} ${JSON.stringify(shape(t))}`).join('; '));
+  check('import: a listed DH never fields', T.every(t => t.batters.slice(0, 9).every(b => fieldGroup(b.pos) !== 'DH' || b.id === t.dhId)));
+  check('import: the DH is the best bat left after the fielders', T.every(t => { const dh = t.batters.find(b => b.id === t.dhId); return dh && t.batters.slice(9).every(b => rateOf(b).ops <= rateOf(dh).ops + 1e-12); }));
+  check('import: the leadoff hitter has the best projected OBP of the nine', T.every(t => { const nine = t.batters.slice(0, 9); return nine.every(b => rateOf(b).obp <= rateOf(nine[0]).obp + 1e-12); }));
+  check('import: the cleanup hitter is one of the three best bats after leadoff', T.every(t => { const rest = t.batters.slice(1, 9).map(b => rateOf(b).ops).sort((a, b) => b - a); return rateOf(t.batters[3]).ops >= rest[2] - 1e-12; }));
+  check('import: the bench never out-hits a fielder at his own position', T.every(t => t.batters.slice(9).filter(b => fieldGroup(b.pos) !== 'DH').every(b => {
+    const grp = fieldGroup(b.pos), starters = t.batters.slice(0, 9).filter(x => x.id !== t.dhId && fieldGroup(x.pos) === grp);
+    return starters.every(x => rateOf(x).ops >= rateOf(b).ops - 1e-12); })));
+  check('the DH shows as DH; everyone else shows his position', T.every(t => t.batters.every(b => lineupPos(t, b) === (b.id === t.dhId ? 'DH' : b.pos))));
+  check('allBatters carries the DH badge', h.L.allBatters().filter(b => b.pos === 'DH').length === T.length + T.flatMap(t => t.batters.slice(9)).filter(b => fieldGroup(b.pos) === 'DH').length);
+  // Rebuilding after a scramble restores the same nine in the same order (the builder is a function of the ratings, not of the current order)
+  const t0 = T[0], before = t0.batters.slice(0, 9).map(b => b.id), dh0 = t0.dhId;
+  t0.batters.reverse(); t0.dhId = null;
+  buildLineup(t0);
+  check('rebuild after a scramble restores the same nine in the same order', t0.batters.slice(0, 9).map(b => b.id).join() === before.join() && t0.dhId === dh0);
+  // Two DH-labelled hitters: only one plays, and he is the better bat
+  const t1 = T.find(t => t.batters.filter(b => fieldGroup(b.pos) === 'DH').length >= 2);
+  if (t1) {
+    const dhs = t1.batters.filter(b => fieldGroup(b.pos) === 'DH').sort((a, b) => rateOf(b).ops - rateOf(a).ops);
+    const playing = t1.batters.slice(0, 9).filter(b => fieldGroup(b.pos) === 'DH');
+    check('two listed DHs: at most one plays', playing.length <= 1 && (playing.length === 0 || t1.dhId === playing[0].id), `${t1.name}: ${dhs.map(b => `${b.name} ${rateOf(b).ops.toFixed(3)}`).join(', ')}`);
+  } else console.log('SKIP  two-DH check (no team lists two DHs)');
+  // A roster with no catcher still fields nine, filling C from the best other fielder; a listed DH is not used to field
+  const t2 = { id: 999, name: 'No Catchers', batters: T[1].batters.filter(b => fieldGroup(b.pos) !== 'C').map(b => ({ ...b })), pitchers: [] };
+  buildLineup(t2);
+  const g2 = shape(t2);
+  check('no catcher on the roster: nine still play, no listed DH fields', t2.batters.slice(0, 9).length === 9 && g2.DH === 1 && g2.C === 0 && g2.IF + g2.OF === 8 && t2.batters.slice(0, 9).every(b => fieldGroup(b.pos) !== 'DH' || b.id === t2.dhId), JSON.stringify(g2));
+  // A generated league gets lineups too
+  h.L.generateLeague(); h.drain();
+  check('generated league: every team fields 1 C, 4 IF, 3 OF and a DH', h.L.LEAGUE.teams.every(t => okShape(shape(t))));
+  // A league file keeps its saved order and DH
+  const sim = path.join(ROOT, 'Configs', 'MLB_2026_simulated.json');
+  if (fs.existsSync(sim)) {
+    const saved = JSON.parse(fs.readFileSync(sim, 'utf8')).teams[0].batters.map(b => b.id);
+    h.importLeague(sim);
+    check('league file import keeps its saved batting order', h.L.LEAGUE.teams[0].batters.map(b => b.id).join() === saved.join());
+    h.L.buildAllLineups(); h.drain();
+    check('Set All Lineups rebuilds a league file (a roster with no catcher fields its best other bat there)', h.L.LEAGUE.teams.every(okFor), h.L.LEAGUE.teams.filter(t => !okShape(shape(t))).map(t => `${t.name} ${JSON.stringify(shape(t))}`).join('; '));
+  }
+}
+
 console.log(failed ? `${failed} check(s) failed` : 'engine OK');
 process.exit(failed ? 1 : 0);

@@ -1,5 +1,5 @@
-import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl } from './utils.js';
-import { LEAGUE, saveLeague, allBatters, allPitchers, applyAvgRosterToLeague } from './league.js';
+import { battingAvg, obpCalc, slgCalc, teamLogoHtml, cl, projectBatterMix } from './utils.js';
+import { LEAGUE, saveLeague, allBatters, allPitchers, applyAvgRosterToLeague, buildLineup, buildAllLineups, lineupPos } from './league.js';
 import { MLB, ratingToPct, pctToRating } from './data.js';
 import { renderSimulate, stopAfterCurrentGame, simSetMode } from './game.js';
 import { exportSeasonArchive, renderHistory, getSeasonViewerEntry, getSeasonViewerInfo, setSeasonViewerPos, stepSeasonViewer, getAllHistorySeasons } from './history.js';
@@ -519,7 +519,7 @@ function renderBatterTableContent() {
     return `<tr data-player-id="${b.id}" data-bat-idx="${idx}"${unsorted ? ' draggable="true"' : ''} style="cursor:pointer">
       <td style="text-align:center;color:var(--muted)">${slot}</td>
       <td style="text-align:left"><b>${b.name}</b></td>
-      <td style="text-align:left"><span class="pos-badge">${b.pos}</span></td>
+      <td style="text-align:left"><span class="pos-badge">${lineupPos(t, b)}</span></td>
       <td>${b.career.g||0}</td><td>${b.career.ab||0}</td><td>${b.career.r||0}</td><td>${b.career.h||0}</td>
       <td>${(b.career.h||0)-(b.career.hr||0)-(b.career.doubles||0)-(b.career.triples||0)}</td>
       <td>${b.career.doubles||0}</td><td>${b.career.triples||0}</td><td>${b.career.hr||0}</td><td>${b.career.rbi||0}</td>
@@ -530,7 +530,10 @@ function renderBatterTableContent() {
     </tr>`;
   }).join('');
 
-  const hintHtml = unsorted ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:0.60rem;color:#bbb;margin-bottom:6px">drag rows to reorder</div>` : '';
+  const hintHtml = unsorted ? `<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <button class="btn sm" onclick="setTeamLineup()" title="Fill slots 1-9 with 1 C, 4 IF, 3 OF and a DH, best projected bats first, in batting order">Set Lineup</button>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:0.60rem;color:#bbb">slots 1–9 play: 1 C · 4 IF · 3 OF · DH — drag rows to reorder</span>
+    </div>` : '';
   const container = document.getElementById('roster-table-body');
   container.innerHTML = `
     ${hintHtml}
@@ -645,7 +648,10 @@ function renderPitcherTableContent() {
     rows = pitchers.map(mkRow).join('');
   }
 
-  const hintHtml = unsorted ? `<div style="font-family:'IBM Plex Mono',monospace;font-size:0.60rem;color:#bbb;margin-bottom:6px">drag rows to reorder</div>` : '';
+  const hintHtml = unsorted ? `<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <button class="btn sm" onclick="setTeamLineup()" title="Fill slots 1-9 with 1 C, 4 IF, 3 OF and a DH, best projected bats first, in batting order">Set Lineup</button>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:0.60rem;color:#bbb">slots 1–9 play: 1 C · 4 IF · 3 OF · DH — drag rows to reorder</span>
+    </div>` : '';
   const container = document.getElementById('roster-table-body');
   container.innerHTML = `
     ${hintHtml}
@@ -693,6 +699,22 @@ function renderPitcherTableContent() {
       });
     }
   });
+}
+
+// Rebuild this team's nine: eight fielders and a DH by projected bat, in batting order (league.js buildLineup).
+export function setTeamLineup() {
+  const t = LEAGUE.teams.find(t => t.id === currentTeamId);
+  if (!t) return;
+  buildLineup(t);
+  saveLeague();
+  renderRosterTableContent();
+}
+
+// League Settings > Set All Lineups: the same for every team, for a league file whose order predates the DH.
+export function setAllLineups() {
+  if (!confirm('Rebuild every team\'s lineup? Slots 1-9 become 1 C, 4 IF, 3 OF and a DH, best projected bats first. Hand-set orders are replaced.')) return;
+  buildAllLineups();
+  renderHome();
 }
 
 export function deletePlayerFromTable(playerId) {
@@ -775,29 +797,7 @@ function projectPlayer(p) {
   const PA = 100;
   const norm = raw => { const tot = Object.values(raw).reduce((s,v)=>s+v,0); const out={}; for (const k in raw) out[k]=raw[k]/tot; return out; };
   if (p.type === 'batter') {
-    const k  = cl(p.kPct * .6  + MLB.k    * .4, .10, .38);
-    const bb = cl(p.bbPct * .6 + MLB.walk * .4, .04, .16);
-    const go = cl(p.goPct, .12, .32);
-    const speedFactor  = cl((p.sbRate || 0.075) / 0.15, 0, 1);
-    const speedBonus   = (speedFactor - 0.5) * 0.020;  // ±0.010 AVG; elite speed ≈ +10 pts
-    const contactRate  = cl(0.260 - (p.kPct||0.20) * 0.260, 0.130, 0.245);
-    const hitRate      = cl(contactRate + speedBonus, 0.120, 0.265);
-    const adjSinglePct = (p.singlePct||0) + Math.max(0, speedBonus);
-    const rawHitSum    = adjSinglePct + (p.doublePct||0) + (p.triplePct||0) + (p.hrPct||0);
-    const hitDenom     = rawHitSum > 0 ? rawHitSum : 1;
-    // Base hit type probabilities
-    const pSingle = hitRate * (adjSinglePct     / hitDenom);
-    const pDbl    = hitRate * ((p.doublePct||0) / hitDenom);
-    const pTriple = hitRate * ((p.triplePct||0) / hitDenom);
-    const pHr     = hitRate * ((p.hrPct||0)     / hitDenom);
-    // Speed-based extra-base upgrade (mirrors tryExtraBase in sim)
-    const singleUpgrade = Math.max(0, speedFactor - 0.55) * 0.30;
-    const doubleUpgrade = Math.max(0, speedFactor - 0.70) * 0.20;
-    const single = pSingle * (1 - singleUpgrade);
-    const dbl    = pDbl * (1 - doubleUpgrade) + pSingle * singleUpgrade;
-    const triple = pTriple + pDbl * doubleUpgrade;
-    const hr     = pHr;
-    const pr = norm({ k, go, fo:p.foPct, lo:MLB.lo, walk:bb, hbp:MLB.hbp, single, dbl, triple, hr });
+    const pr = projectBatterMix(p);   // utils.js; buildLineup ranks by the same mix
     const BB=Math.round(pr.walk*PA), HBP=Math.round(pr.hbp*PA), K=Math.round(pr.k*PA);
     const AB=PA-BB-HBP;
     const H1=Math.round(pr.single*PA), H2=Math.round(pr.dbl*PA), H3=Math.round(pr.triple*PA), HR=Math.round(pr.hr*PA);
@@ -875,7 +875,7 @@ function renderCard(t, p) {
     <div class="card-team-name">${teamLogoHtml(t, 22)} ${t.name}</div>
     <div class="card-player-avatar">${p.emoji}</div>
     <div class="card-player-name">${p.name}</div>
-    <div class="card-player-pos">${p.pos} · ${p.arch}</div>
+    <div class="card-player-pos">${lineupPos(t, p)} · ${p.arch}</div>
     <div style="margin-top:auto;position:relative;z-index:1">
       <div style="font-family:'Playfair Display',serif;font-size:3rem;font-weight:900;color:#222;text-align:right;line-height:1">#${p.num}</div>
       <div style="display:flex;gap:6px;padding-top:10px">
